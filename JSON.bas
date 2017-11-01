@@ -1,6 +1,6 @@
 Attribute VB_Name = "JSON"
 
-' VBA JSON parser, Backus–Naur form JSON parser based on RegEx v1.6
+' VBA JSON parser, Backusâ€“Naur form JSON parser based on RegEx v1.6.01
 ' Copyright (C) 2015-2017 omegastripes
 ' omegastripes@yandex.ru
 ' https://github.com/omegastripes/VBA-JSON-parser
@@ -53,7 +53,7 @@ Sub Parse(ByVal sSample As String, vJSON As Variant, sState As String)
         Tokenize "c"
         .Pattern = "\b[A-Za-z_]\w*(?=\s*\:)" ' Unspecified non-double-quoted property name accepted
         Tokenize "n"
-        .Pattern = "\s+"
+        .Pattern = "\s{2,}"
         sBuffer = .Replace(sBuffer, "") ' Remove unnecessary spaces
         .MultiLine = False
         Do
@@ -314,7 +314,7 @@ Sub ToArray(vJSON As Variant, aRows() As Variant, aHeader() As Variant)
     ' Input:
     ' vJSON - Array or Object which contains rows data
     ' Output:
-    ' aData - 2d array representing JSON data
+    ' aRows - 2d array representing JSON data
     ' aHeader - 1d array of property names
     
     Dim sName As Variant
@@ -345,7 +345,7 @@ Sub ToArray(vJSON As Variant, aRows() As Variant, aHeader() As Variant)
             End If
         Case Else
             ReDim aData(0 To 0, 0 To 0)
-            aData(0, 0) = ToString(vJSON)
+            aData(0, 0) = vJSON
     End Select
     aHeader = oHeader.Keys()
     Set oHeader = Nothing
@@ -374,7 +374,7 @@ Private Sub ToArrayElement(vElement As Variant, sFieldName As String)
                 If UBound(aData, 2) < oHeader.Count - 1 Then ReDim Preserve aData(0 To UBound(aData, 1), 0 To oHeader.Count - 1)
             End If
             j = oHeader(sFieldName)
-            aData(i, j) = ToString(vElement)
+            aData(i, j) = vElement
     End Select
     
 End Sub
