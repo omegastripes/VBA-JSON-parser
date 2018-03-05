@@ -1,6 +1,6 @@
 Attribute VB_Name = "JSON"
 
-' VBA JSON parser, Backus–Naur form JSON parser based on RegEx v1.6.01
+' VBA JSON parser, Backus-Naur form JSON parser based on RegEx v1.6.01
 ' Copyright (C) 2015-2017 omegastripes
 ' omegastripes@yandex.ru
 ' https://github.com/omegastripes/VBA-JSON-parser
@@ -53,7 +53,7 @@ Sub Parse(ByVal sSample As String, vJSON As Variant, sState As String)
         Tokenize "c"
         .Pattern = "\b[A-Za-z_]\w*(?=\s*\:)" ' Unspecified non-double-quoted property name accepted
         Tokenize "n"
-        .Pattern = "\s{2,}"
+        .Pattern = "\s+"
         sBuffer = .Replace(sBuffer, "") ' Remove unnecessary spaces
         .MultiLine = False
         Do
