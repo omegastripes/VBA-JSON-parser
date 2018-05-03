@@ -1,6 +1,6 @@
 Attribute VB_Name = "JSON"
 
-' VBA JSON parser, Backus-Naur form JSON parser based on RegEx v1.6.01
+' VBA JSON parser, Backus-Naur form JSON parser based on RegEx v1.6.02
 ' Copyright (C) 2015-2017 omegastripes
 ' omegastripes@yandex.ru
 ' https://github.com/omegastripes/VBA-JSON-parser
@@ -60,9 +60,9 @@ Sub Parse(ByVal sSample As String, vJSON As Variant, sState As String)
             bMatch = False
             .Pattern = "<\d+(?:[sn])>\:<\d+[codas]>" ' Object property structure
             Tokenize "p"
-            .Pattern = "\{(?:<\d+p>(?:,<\d+p>)*)?\}" ' Object structure
+            .Pattern = "\{(?:<\d+p>(?:,<\d+p>)*)?,?\}" ' Object structure
             Tokenize "o"
-            .Pattern = "\[(?:<\d+[codas]>(?:,<\d+[codas]>)*)?\]" ' Array structure
+            .Pattern = "\[(?:<\d+[codas]>(?:,<\d+[codas]>)*)?,?\]" ' Array structure
             Tokenize "a"
         Loop While bMatch
         .Pattern = "^<\d+[oa]>$" ' Top level object structure, unspecified array accepted
