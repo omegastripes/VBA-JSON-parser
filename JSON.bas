@@ -1,7 +1,7 @@
 Attribute VB_Name = "JSON"
 
-' VBA JSON parser, Backus-Naur form JSON parser based on RegEx v1.6.02
-' Copyright (C) 2015-2017 omegastripes
+' VBA JSON parser, Backus-Naur form JSON parser based on RegEx v1.7
+' Copyright (C) 2015-2018 omegastripes
 ' omegastripes@yandex.ru
 ' https://github.com/omegastripes/VBA-JSON-parser
 '
@@ -379,4 +379,44 @@ Private Sub ToArrayElement(vElement As Variant, sFieldName As String)
     
 End Sub
 
+Sub Flatten(vJSON As Variant, vResult As Variant)
+    
+    ' Input:
+    ' vJSON - Array or Object which contains JSON data
+    ' Output:
+    ' oResult - Flatten JSON data object
+    
+    Set oChunks = CreateObject("Scripting.Dictionary")
+    FlattenElement vJSON, ""
+    Set vResult = oChunks
+    Set oChunks = Nothing
+    
+End Sub
 
+Private Sub FlattenElement(vElement As Variant, sProperty As String)
+    
+    Dim vKey
+    Dim i As Long
+    
+    Select Case VarType(vElement)
+        Case vbObject
+            If vElement.Count = 0 Then
+                Set oChunks(sProperty) = CreateObject("Scripting.Dictionary")
+            Else
+                For Each vKey In vElement
+                    FlattenElement vElement(vKey), IIf(sProperty <> "", sProperty & "." & vKey, vKey)
+                Next
+            End If
+        Case Is >= vbArray
+            If UBound(vElement) = -1 Then
+                oChunks(sProperty) = Array()
+            Else
+                For i = 0 To UBound(vElement)
+                    FlattenElement vElement(i), sProperty & "[" & i & "]"
+                Next
+            End If
+        Case Else
+            oChunks(sProperty) = vElement
+    End Select
+    
+End Sub
