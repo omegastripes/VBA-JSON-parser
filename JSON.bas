@@ -1,7 +1,7 @@
 Attribute VB_Name = "JSON"
 
-' VBA JSON parser, Backus-Naur form JSON parser based on RegEx v1.7
-' Copyright (C) 2015-2018 omegastripes
+' VBA JSON parser, Backus-Naur form JSON parser based on RegEx v1.71
+' Copyright (C) 2015-2019 omegastripes
 ' omegastripes@yandex.ru
 ' https://github.com/omegastripes/VBA-JSON-parser
 '
@@ -249,26 +249,26 @@ Private Sub SerializeElement(vElement As Variant, ByVal sIndent As String)
     
 End Sub
 
-Function ToString(vJSON As Variant) As String
+Function ToYaml(vJSON As Variant) As String
     
     Select Case VarType(vJSON)
         Case vbObject, Is >= vbArray
             Set oChunks = CreateObject("Scripting.Dictionary")
-            ToStringElement vJSON, ""
+            ToYamlElement vJSON, ""
             oChunks.Remove 0
-            ToString = Join(oChunks.Items(), "")
+            ToYaml = Join(oChunks.Items(), "")
             Set oChunks = Nothing
         Case vbNull
-            ToString = "Null"
+            ToYaml = "Null"
         Case vbBoolean
-            ToString = IIf(vJSON, "True", "False")
+            ToYaml = IIf(vJSON, "True", "False")
         Case Else
-            ToString = CStr(vJSON)
+            ToYaml = CStr(vJSON)
     End Select
     
 End Function
 
-Private Sub ToStringElement(vElement As Variant, ByVal sIndent As String)
+Private Sub ToYamlElement(vElement As Variant, ByVal sIndent As String)
     
     Dim aKeys() As Variant
     Dim i As Long
@@ -283,7 +283,7 @@ Private Sub ToStringElement(vElement As Variant, ByVal sIndent As String)
                     aKeys = vElement.Keys
                     For i = 0 To UBound(aKeys)
                         .Item(.Count) = sIndent & aKeys(i) & ": "
-                        ToStringElement vElement(aKeys(i)), sIndent & vbTab
+                        ToYamlElement vElement(aKeys(i)), sIndent & "    "
                         If Not (i = UBound(aKeys)) Then .Item(.Count) = vbCrLf
                     Next
                 End If
@@ -294,7 +294,7 @@ Private Sub ToStringElement(vElement As Variant, ByVal sIndent As String)
                     .Item(.Count) = vbCrLf
                     For i = 0 To UBound(vElement)
                         .Item(.Count) = sIndent & i & ": "
-                        ToStringElement vElement(i), sIndent & vbTab
+                        ToYamlElement vElement(i), sIndent & "    "
                         If Not (i = UBound(vElement)) Then .Item(.Count) = vbCrLf
                     Next
                 End If
