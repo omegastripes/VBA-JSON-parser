@@ -16,7 +16,7 @@ Import **JSON.bas** module into the VBA Project for JSON processing. No referenc
 <details><summary>How to import?</summary>
 <p>
 
-Download and save JSON.bas to a file - open the page with JSON.bas code, right-click on Raw button, choose Save link as... (for Chrome):
+Download and save JSON.bas to a file - open [the page with JSON.bas code](https://github.com/omegastripes/VBA-JSON-parser/blob/master/JSON.bas), right-click on Raw button, choose Save link as... (for Chrome):
 
 ![download](https://user-images.githubusercontent.com/3822668/52233449-33dde700-28d0-11e9-97b9-f61fd98c16fd.png)
 
@@ -31,73 +31,79 @@ Import JSON.bas into the VBA Project - open Visual Basic Editor by pressing Alt+
 Here is simple example for MS Excel, put the below code into standard module:
 
 ```vba
-Option Explicit
 
-Sub Test()
-    
-    Dim sJSONString As String
-    Dim vJSON
-    Dim sState As String
-    Dim vFlat
-    
-    ' Retrieve JSON response
-    With CreateObject("MSXML2.XMLHTTP")
-        .Open "GET", "http://trirand.com/blog/phpjqgrid/examples/jsonp/getjsonp.php?qwery=longorders&rows=1000", True
-        .Send
-        Do Until .ReadyState = 4: DoEvents: Loop
-        sJSONString = .ResponseText
-    End With
-    ' Parse JSON response
-    JSON.Parse sJSONString, vJSON, sState
-    ' Check response validity
-    Select Case True
-        Case sState <> "Object"
-            MsgBox "Invalid JSON response"
-        Case Not vJSON.Exists("rows")
-            MsgBox "JSON contains no rows"
-        Case Else
-            ' Convert JSON nested rows array to 2D Array and output to worksheet #1
-            Output ThisWorkbook.Sheets(1), vJSON("rows")
-            ' Flatten JSON
-            JSON.Flatten vJSON, vFlat
-            ' Convert to 2D Array and output to worksheet #2
-            Output ThisWorkbook.Sheets(2), vFlat
-            ' Serialize JSON and save to file
-            CreateObject("Scripting.FileSystemObject") _
-                .OpenTextFile(ThisWorkbook.Path & "\sample.json", 2, True, -1) _
-                .Write JSON.Serialize(vJSON)
-            ' Convert JSON to YAML and save to file
-            CreateObject("Scripting.FileSystemObject") _
-                .OpenTextFile(ThisWorkbook.Path & "\sample.yaml", 2, True, -1) _
-                .Write JSON.ToYaml(vJSON)
-            MsgBox "Completed"
-    End Select
-    
-End Sub
 
-Sub Output(oTarget As Worksheet, vJSON)
-    
-    Dim aData()
-    Dim aHeader()
-    
-    ' Convert JSON to 2D Array
-    JSON.ToArray vJSON, aData, aHeader
-    ' Output to target worksheet range
-    With oTarget
-        .Activate
-        .Cells.Delete
-        With .Cells(1, 1)
-            .Resize(1, UBound(aHeader) - LBound(aHeader) + 1).Value = aHeader
-            .Offset(1, 0).Resize( _
-                    UBound(aData, 1) - LBound(aData, 1) + 1, _
-                    UBound(aData, 2) - LBound(aData, 2) + 1 _
-                ).Value = aData
-        End With
-        .Columns.AutoFit
-    End With
-    
-End Sub
+
 ```
+
+<!-- language: vba -->
+
+    Option Explicit
+
+    Sub Test()
+        
+        Dim sJSONString As String
+        Dim vJSON
+        Dim sState As String
+        Dim vFlat
+        
+        ' Retrieve JSON response
+        With CreateObject("MSXML2.XMLHTTP")
+            .Open "GET", "http://trirand.com/blog/phpjqgrid/examples/jsonp/getjsonp.php?qwery=longorders&rows=1000", True
+            .Send
+            Do Until .ReadyState = 4: DoEvents: Loop
+            sJSONString = .ResponseText
+        End With
+        ' Parse JSON response
+        JSON.Parse sJSONString, vJSON, sState
+        ' Check response validity
+        Select Case True
+            Case sState <> "Object"
+                MsgBox "Invalid JSON response"
+            Case Not vJSON.Exists("rows")
+                MsgBox "JSON contains no rows"
+            Case Else
+                ' Convert JSON nested rows array to 2D Array and output to worksheet #1
+                Output ThisWorkbook.Sheets(1), vJSON("rows")
+                ' Flatten JSON
+                JSON.Flatten vJSON, vFlat
+                ' Convert to 2D Array and output to worksheet #2
+                Output ThisWorkbook.Sheets(2), vFlat
+                ' Serialize JSON and save to file
+                CreateObject("Scripting.FileSystemObject") _
+                    .OpenTextFile(ThisWorkbook.Path & "\sample.json", 2, True, -1) _
+                    .Write JSON.Serialize(vJSON)
+                ' Convert JSON to YAML and save to file
+                CreateObject("Scripting.FileSystemObject") _
+                    .OpenTextFile(ThisWorkbook.Path & "\sample.yaml", 2, True, -1) _
+                    .Write JSON.ToYaml(vJSON)
+                MsgBox "Completed"
+        End Select
+        
+    End Sub
+
+    Sub Output(oTarget As Worksheet, vJSON)
+        
+        Dim aData()
+        Dim aHeader()
+        
+        ' Convert JSON to 2D Array
+        JSON.ToArray vJSON, aData, aHeader
+        ' Output to target worksheet range
+        With oTarget
+            .Activate
+            .Cells.Delete
+            With .Cells(1, 1)
+                .Resize(1, UBound(aHeader) - LBound(aHeader) + 1).Value = aHeader
+                .Offset(1, 0).Resize( _
+                        UBound(aData, 1) - LBound(aData, 1) + 1, _
+                        UBound(aData, 2) - LBound(aData, 2) + 1 _
+                    ).Value = aData
+            End With
+            .Columns.AutoFit
+        End With
+        
+    End Sub
 
 ## More Examples
 You can find some <a href="https://stackoverflow.com/search?q=user%3A2165759+is%3Aanswer+json.bas">usage examples on SO</a>.
