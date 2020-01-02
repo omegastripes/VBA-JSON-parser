@@ -1,7 +1,6 @@
 Attribute VB_Name = "JSON"
-
-' VBA JSON parser, Backus-Naur form JSON parser based on RegEx v1.71
-' Copyright (C) 2015-2019 omegastripes
+' VBA JSON parser, Backus-Naur form JSON parser based on RegEx v1.7.03
+' Copyright (C) 2015-2020 omegastripes
 ' omegastripes@yandex.ru
 ' https://github.com/omegastripes/VBA-JSON-parser
 '
@@ -21,11 +20,11 @@ Attribute VB_Name = "JSON"
 Option Explicit
 
 Private sBuffer As String
-Private oTokens As Object
+Private oTokens As Dictionary
 Private oRegEx As Object
 Private bMatch As Boolean
-Private oChunks As Object
-Private oHeader As Object
+Private oChunks As Dictionary
+Private oHeader As Dictionary
 Private aData() As Variant
 Private i As Long
 Private sDelim As String
@@ -39,7 +38,7 @@ Sub Parse(ByVal sSample As String, vJSON As Variant, sState As String)
     ' sState - string Object|Array|Error depending on result
     
     sBuffer = sSample
-    Set oTokens = CreateObject("Scripting.Dictionary")
+    Set oTokens = New Dictionary
     Set oRegEx = CreateObject("VBScript.RegExp")
     With oRegEx ' Patterns based on specification http://www.json.org/
         .Global = True
@@ -108,7 +107,7 @@ End Sub
 Private Sub Retrieve(sTokenKey, vTransfer)
     
     Dim sTokenValue As String
-    Dim sName As String
+    Dim sName As Variant
     Dim vValue As Variant
     Dim aTokens() As String
     Dim i As Long
@@ -118,7 +117,7 @@ Private Sub Retrieve(sTokenKey, vTransfer)
         .Global = True
         Select Case Left(Right(sTokenKey, 2), 1)
             Case "o"
-                Set vTransfer = CreateObject("Scripting.Dictionary")
+                Set vTransfer = New Dictionary
                 aTokens = Split(sTokenValue, "<")
                 For i = 1 To UBound(aTokens)
                     Retrieve "<" & Split(aTokens(i), ">", 2)(0) & ">", vTransfer
@@ -153,7 +152,7 @@ Private Sub Retrieve(sTokenKey, vTransfer)
                 vTransfer = Replace(Replace(Replace(Replace(Replace(Replace(Replace(Replace( _
                     Mid(sTokenValue, 2, Len(sTokenValue) - 2), _
                     "\""", """"), _
-                    "\\", "\"), _
+                    "\\", "\" & vbNullChar), _
                     "\/", "/"), _
                     "\b", Chr(8)), _
                     "\f", Chr(12)), _
@@ -165,6 +164,7 @@ Private Sub Retrieve(sTokenKey, vTransfer)
                 Do While .Test(vTransfer)
                     vTransfer = .Replace(vTransfer, ChrW(("&H" & Right(.Execute(vTransfer)(0).Value, 4)) * 1))
                 Loop
+                vTransfer = Replace(vTransfer, "\" & vbNullChar, "\")
             Case "d"
                 vTransfer = CDbl(Replace(sTokenValue, ".", sDelim))
             Case "c"
@@ -183,7 +183,7 @@ End Sub
 
 Function Serialize(vJSON As Variant) As String
     
-    Set oChunks = CreateObject("Scripting.Dictionary")
+    Set oChunks = New Dictionary
     SerializeElement vJSON, ""
     Serialize = Join(oChunks.Items(), "")
     Set oChunks = Nothing
@@ -198,7 +198,9 @@ Private Sub SerializeElement(vElement As Variant, ByVal sIndent As String)
     With oChunks
         Select Case VarType(vElement)
             Case vbObject
-                If vElement.Count = 0 Then
+                If Not TypeOf vElement Is Dictionary Then
+                    .Item(.Count) = "{}"
+                ElseIf vElement.Count = 0 Then
                     .Item(.Count) = "{}"
                 Else
                     .Item(.Count) = "{" & vbCrLf
@@ -228,7 +230,7 @@ Private Sub SerializeElement(vElement As Variant, ByVal sIndent As String)
                 .Item(.Count) = vElement
             Case vbSingle, vbDouble
                 .Item(.Count) = Replace(vElement, ",", ".")
-            Case vbNull
+            Case vbNull, vbError
                 .Item(.Count) = "null"
             Case vbBoolean
                 .Item(.Count) = IIf(vElement, "true", "false")
@@ -253,12 +255,12 @@ Function ToYaml(vJSON As Variant) As String
     
     Select Case VarType(vJSON)
         Case vbObject, Is >= vbArray
-            Set oChunks = CreateObject("Scripting.Dictionary")
+            Set oChunks = New Dictionary
             ToYamlElement vJSON, ""
             oChunks.Remove 0
             ToYaml = Join(oChunks.Items(), "")
             Set oChunks = Nothing
-        Case vbNull
+        Case vbNull, vbError
             ToYaml = "Null"
         Case vbBoolean
             ToYaml = IIf(vJSON, "True", "False")
@@ -276,7 +278,9 @@ Private Sub ToYamlElement(vElement As Variant, ByVal sIndent As String)
     With oChunks
         Select Case VarType(vElement)
             Case vbObject
-                If vElement.Count = 0 Then
+                If Not TypeOf vElement Is Dictionary Then
+                    .Item(.Count) = "''"
+                ElseIf vElement.Count = 0 Then
                     .Item(.Count) = "''"
                 Else
                     .Item(.Count) = vbCrLf
@@ -298,7 +302,7 @@ Private Sub ToYamlElement(vElement As Variant, ByVal sIndent As String)
                         If Not (i = UBound(vElement)) Then .Item(.Count) = vbCrLf
                     Next
                 End If
-            Case vbNull
+            Case vbNull, vbError
                 .Item(.Count) = "Null"
             Case vbBoolean
                 .Item(.Count) = IIf(vElement, "True", "False")
@@ -319,15 +323,15 @@ Sub ToArray(vJSON As Variant, aRows() As Variant, aHeader() As Variant)
     
     Dim sName As Variant
     
-    Set oHeader = CreateObject("Scripting.Dictionary")
+    Set oHeader = New Dictionary
     Select Case VarType(vJSON)
         Case vbObject
             If vJSON.Count > 0 Then
                 ReDim aData(0 To vJSON.Count - 1, 0 To 0)
                 oHeader("#") = 0
                 i = 0
-                For Each sName In vJSON
-                    aData(i, 0) = "#" & sName
+                For Each sName In vJSON.Keys
+                    aData(i, 0) = sName
                     ToArrayElement vJSON(sName), ""
                     i = i + 1
                 Next
@@ -361,12 +365,12 @@ Private Sub ToArrayElement(vElement As Variant, sFieldName As String)
     
     Select Case VarType(vElement)
         Case vbObject ' Collection of objects
-            For Each sName In vElement
-                ToArrayElement vElement(sName), sFieldName & IIf(sFieldName = "", "", "_") & sName
+            For Each sName In vElement.Keys
+                ToArrayElement vElement(sName), sFieldName & IIf(sFieldName = "", "", ".") & Replace(sName, " ", "_")
             Next
         Case Is >= vbArray  ' Collection of arrays
             For j = 0 To UBound(vElement)
-                ToArrayElement vElement(j), sFieldName & IIf(sFieldName = "", "", "_") & "#" & j
+                ToArrayElement vElement(j), sFieldName & "[" & j & "]"
             Next
         Case Else
             If Not oHeader.Exists(sFieldName) Then
@@ -386,7 +390,7 @@ Sub Flatten(vJSON As Variant, vResult As Variant)
     ' Output:
     ' oResult - Flatten JSON data object
     
-    Set oChunks = CreateObject("Scripting.Dictionary")
+    Set oChunks = New Dictionary
     FlattenElement vJSON, ""
     Set vResult = oChunks
     Set oChunks = Nothing
@@ -398,23 +402,18 @@ Private Sub FlattenElement(vElement As Variant, sProperty As String)
     Dim vKey
     Dim i As Long
     
-    Select Case VarType(vElement)
-        Case vbObject
-            If vElement.Count = 0 Then
-                Set oChunks(sProperty) = CreateObject("Scripting.Dictionary")
-            Else
-                For Each vKey In vElement
+    Select Case True
+        Case TypeOf vElement Is Dictionary
+            If vElement.Count > 0 Then
+                For Each vKey In vElement.Keys
                     FlattenElement vElement(vKey), IIf(sProperty <> "", sProperty & "." & vKey, vKey)
                 Next
             End If
-        Case Is >= vbArray
-            If UBound(vElement) = -1 Then
-                oChunks(sProperty) = Array()
-            Else
-                For i = 0 To UBound(vElement)
-                    FlattenElement vElement(i), sProperty & "[" & i & "]"
-                Next
-            End If
+        Case IsObject(vElement)
+        Case isArray(vElement)
+            For i = 0 To UBound(vElement)
+                FlattenElement vElement(i), sProperty & "[" & i & "]"
+            Next
         Case Else
             oChunks(sProperty) = vElement
     End Select
