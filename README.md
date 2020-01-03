@@ -1,11 +1,11 @@
 # VBA JSON Parser
 [Backus-Naur Form](https://en.wikipedia.org/wiki/Backus%E2%80%93Naur_form) JSON Parser based on RegEx for VBA.
 ## Purpose and Features
-- Converts JSON string to a structure of nested Dictionaries and Arrays. JSON Objects `{}` are represented by Dictionaries, providing `.Count`, `.Exists()`, `.Item()`, `.Items`, `.Keys` properties and methods. JSON Arrays `[]` are the conventional zero-based VB Arrays, so `UBound()` allows to get the number of elements. Such approach makes easy and straightforward access to structure elements.
-- Serialize and beautify JSON structure.
-- Builds 2D Array based on table-like JSON structure.
-- Flattens JSON structure.
-- Serialize JSON structure into [YAML format](https://yaml.org/) string.
+- Parsing JSON string to a structure of nested Dictionaries and Arrays. JSON Objects `{}` are represented by Dictionaries, providing `.Count`, `.Exists()`, `.Item()`, `.Items`, `.Keys` properties and methods. JSON Arrays `[]` are the conventional zero-based VB Arrays, so `UBound() + 1` allows to get the number of elements. Such approach makes easy and straightforward access to structure elements (parsing result is returned via variable passed by ref to sub, so that both an array and a dictionary object can be returned).
+- Serializing JSON structure with beautification.
+- Building 2D Array based on table-like JSON structure.
+- Flattening and unflattening JSON structure.
+- Serializing JSON structure into [YAML format](https://yaml.org/) string.
 - Parser complies with [JSON Standard](http://json.org/).
 - Allows few non-stantard features in JSON string parsing: single quoted and unquoted object keys, single quoted strings, capitalised `True`, `False` and `Null` constants, and trailing commas.
 - Invulnerable for malicious JS code injections.
@@ -119,19 +119,21 @@ You can find some <a href="https://stackoverflow.com/search?q=user%3A2165759+is%
 
 ## Beta
 
-**Extension** (VBA-JSON-parser/Beta/jsonExt.bas)
+Here are some drafts being under development and not fully tested, any bugs detected and suggestions on improvement are welcome in [issues](https://github.com/omegastripes/VBA-JSON-parser/issues).
 
-Some functions available as draft to add flexibility to computations and facilitate processing of JSON structure:
+### Extension
 
-**toArray()** - converts JSON structure to 2d array, enhanced with option explicitly set columns names and order in the header and forbid or permit new columns addition.<br>
-**nestedArraysToArray()** - converts nested 1d arrays representing table data with header array into array of dictionaries.<br>
-**filter()** - fetches elements from array or dictionary by conditions, set like `conds = Array(">=", Array("value", ".dimensions.height"), 15)`.<br>
-**sort()** - orders elements of array or dictionary by value of element by path, set like `".dimensions.height"`.<br>
-**selectElement()** - fetch an element from JSON structure by path, set like `".dimensions.height"`.<br>
-**joinSubDicts()** - merges properties of subdictionaries from one dictionary to another dictionary.<br>
-**joinDicts()** - merges properties from one dictionary to another dictionary.<br>
-**slice()** - fetches a part of array or dictionary by beginning and ending indexes.<br>
+[jsonExt.bas](https://github.com/omegastripes/VBA-JSON-parser/blob/master/Beta/jsonExt.bas). Some functions available as draft to add flexibility to computations and facilitate processing of JSON structure:
 
-**JSON To XML DOM converter** (VBA-JSON-parser/Beta/JSON2XML.bas)
+**toArray()** - advanced converting JSON structure to 2d array, enhanced with options explicitly set columns names and order in the header and forbid or permit new columns addition.<br>
+**filter()** - fetching elements from array or dictionary by conditions, set like `conds = Array(">=", Array("value", ".dimensions.height"), 15)`.<br>
+**sort()** - ordering elements of array or dictionary by value of element by path, set like `".dimensions.height"`.<br>
+**slice()** - fetching a part of array or dictionary by beginning and ending indexes.<br>
+**selectElement()** - fetching an element from JSON structure by path, set like `".dimensions.height"`.<br>
+**joinSubDicts()** - merging properties of subdictionaries from one dictionary to another dictionary.<br>
+**joinDicts()** - merging properties from one dictionary to another dictionary.<br>
+**nestedArraysToArray()** - converting nested 1d arrays representing table data with header array into array of dictionaries.<br>
 
-Converting JSON string to XML string and loading it into XML DOM (instead of building a structure of dictionaries and arrays) can significantly increase performance for large data sets. Further XML DOM data processing can be implemented via DOM methods and XPath.
+### JSON To XML DOM converter
+
+[JSON2XML.bas](https://github.com/omegastripes/VBA-JSON-parser/blob/master/Beta/JSON2XML.bas). Converting JSON string to XML string and loading it into XML DOM (instead of building a structure of dictionaries and arrays) can significantly increase performance for large data sets. Further XML DOM data processing is not yet covered within current version, and can be implemented via DOM methods and XPath.
