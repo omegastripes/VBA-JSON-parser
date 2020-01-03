@@ -1,5 +1,5 @@
 Attribute VB_Name = "JSON"
-' VBA JSON parser, Backus-Naur form JSON parser based on RegEx v1.7.03
+' VBA JSON parser, Backus-Naur form JSON parser based on RegEx v1.7.2
 ' Copyright (C) 2015-2020 omegastripes
 ' omegastripes@yandex.ru
 ' https://github.com/omegastripes/VBA-JSON-parser
@@ -17,7 +17,10 @@ Attribute VB_Name = "JSON"
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+
 Option Explicit
+
+' Need to include a reference to "Microsoft Scripting Runtime".
 
 Private sBuffer As String
 Private oTokens As Dictionary
@@ -366,7 +369,7 @@ Private Sub ToArrayElement(vElement As Variant, sFieldName As String)
     Select Case VarType(vElement)
         Case vbObject ' Collection of objects
             For Each sName In vElement.Keys
-                ToArrayElement vElement(sName), sFieldName & IIf(sFieldName = "", "", ".") & Replace(sName, " ", "_")
+                ToArrayElement vElement(sName), sFieldName & IIf(sFieldName = "", "", ".") & sName
             Next
         Case Is >= vbArray  ' Collection of arrays
             For j = 0 To UBound(vElement)
@@ -410,12 +413,103 @@ Private Sub FlattenElement(vElement As Variant, sProperty As String)
                 Next
             End If
         Case IsObject(vElement)
-        Case isArray(vElement)
+        Case IsArray(vElement)
             For i = 0 To UBound(vElement)
                 FlattenElement vElement(i), sProperty & "[" & i & "]"
             Next
         Case Else
             oChunks(sProperty) = vElement
     End Select
+    
+End Sub
+
+Sub Unflatten(oFlatten, vJSON, bSuccess)
+    
+    ' Input:
+    ' oFlatten - source dictionary containing JSON data
+    ' Output:
+    ' vJSON - created object or array to be returned as result
+    ' bSuccess - boolean indicating successful completion
+    
+    Dim sPath
+    Dim vValue
+    Dim aQualifiers
+    Dim lNextLevel
+    
+    bSuccess = TypeOf oFlatten Is Dictionary
+    If Not bSuccess Then Exit Sub
+    For Each sPath In oFlatten.Keys
+        If IsObject(oFlatten(sPath)) Then
+            Set vValue = oFlatten(sPath)
+        Else
+            vValue = oFlatten(sPath)
+        End If
+        If Left(sPath, 1) <> "[" And Left(sPath, 1) <> "." Then
+            sPath = "." & sPath
+        End If
+        aQualifiers = Split(Replace(Replace(sPath, ".", vbNullChar), "[", vbNullChar), vbNullChar)
+        lNextLevel = 1
+        UnflattenElement vJSON, lNextLevel, aQualifiers, vValue, bSuccess
+        If Not bSuccess Then Exit Sub
+    Next
+    
+End Sub
+
+Private Sub UnflattenElement(vParent, lNextLevel, aQualifiers, vValue, bSuccess)
+    
+    Dim vNextQualifier
+    Dim sNum
+    Dim vChild
+    
+    bSuccess = False
+    If lNextLevel > UBound(aQualifiers) Then
+        If IsObject(vValue) Then
+            Set vParent = vValue
+        Else
+            vParent = vValue
+        End If
+        bSuccess = True
+        Exit Sub
+    End If
+    vNextQualifier = aQualifiers(lNextLevel)
+    If Right(vNextQualifier, 1) = "]" Then
+        sNum = Left(vNextQualifier, Len(vNextQualifier) - 1)
+        If IsNumeric(sNum) Then
+            vNextQualifier = CLng(sNum)
+        End If
+    End If
+    If VarType(vNextQualifier) = vbLong Then
+        If VarType(vParent) = vbEmpty Then
+            vParent = Array()
+        ElseIf Not IsArray(vParent) Then
+            Exit Sub
+        End If
+        If UBound(vParent) < vNextQualifier Then
+            ReDim Preserve vParent(vNextQualifier)
+        End If
+    Else
+        If VarType(vParent) = vbEmpty Then
+            Set vParent = New Dictionary
+        ElseIf Not IsObject(vParent) Then
+            Exit Sub
+        ElseIf Not TypeOf vParent Is Dictionary Then
+            Exit Sub
+        End If
+    End If
+    If IsObject(vParent(vNextQualifier)) Then
+        Set vChild = vParent(vNextQualifier)
+    Else
+        vChild = vParent(vNextQualifier)
+    End If
+    UnflattenElement vChild, lNextLevel + 1, aQualifiers, vValue, bSuccess
+    If Not bSuccess Then
+        Exit Sub
+    End If
+    If IsObject(vChild) Then
+        Set vParent(vNextQualifier) = vChild
+    Else
+        vParent(vNextQualifier) = vChild
+    End If
+    bSuccess = True
     
 End Sub
