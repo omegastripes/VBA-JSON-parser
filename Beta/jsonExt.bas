@@ -100,7 +100,7 @@ Private Sub toArrayElement(element As Variant, fieldName As String)
     Select Case VarType(element)
         Case vbObject ' Collection of objects
             For Each field In element.keys
-                toArrayElement element(field), fieldName & IIf(fieldName = "", "", ".") & Replace(field, " ", "_")
+                toArrayElement element(field), fieldName & IIf(fieldName = "", "", ".") & field
             Next
         Case Is >= vbArray  ' Collection of arrays
             For j = 0 To UBound(element)
