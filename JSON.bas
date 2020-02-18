@@ -209,7 +209,7 @@ Private Sub SerializeElement(vElement As Variant, ByVal sIndent As String)
                     .Item(.Count) = "{" & vbCrLf
                     aKeys = vElement.Keys
                     For i = 0 To UBound(aKeys)
-                        .Item(.Count) = sIndent & vbTab & """" & aKeys(i) & """" & ": "
+                        .Item(.Count) = sIndent & vbTab & """" & EscapeJsonString(aKeys(i)) & """" & ": "
                         SerializeElement vElement(aKeys(i)), sIndent & vbTab
                         If Not (i = UBound(aKeys)) Then .Item(.Count) = ","
                         .Item(.Count) = vbCrLf
@@ -238,20 +238,26 @@ Private Sub SerializeElement(vElement As Variant, ByVal sIndent As String)
             Case vbBoolean
                 .Item(.Count) = IIf(vElement, "true", "false")
             Case Else
-                .Item(.Count) = """" & _
-                    Replace(Replace(Replace(Replace(Replace(Replace(Replace(Replace(vElement, _
-                        "\", "\\"), _
-                        """", "\"""), _
-                        "/", "\/"), _
-                        Chr(8), "\b"), _
-                        Chr(12), "\f"), _
-                        vbLf, "\n"), _
-                        vbCr, "\r"), _
-                        vbTab, "\t") & _
-                    """"
+                .Item(.Count) = """" & EscapeJsonString(vElement) & """"
         End Select
     End With
     
+End Sub
+
+Private Function EscapeJsonString(s)
+    
+    EscapeJsonString = Replace(Replace(Replace(Replace(Replace(Replace(Replace(Replace(s, _
+        "\", "\\"), _
+        """", "\"""), _
+        "/", "\/"), _
+        Chr(8), "\b"), _
+        Chr(12), "\f"), _
+        vbLf, "\n"), _
+        vbCr, "\r"), _
+        vbTab, "\t")
+    
+End Function
+
 End Sub
 
 Function ToYaml(vJSON As Variant) As String
