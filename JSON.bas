@@ -258,8 +258,6 @@ Private Function EscapeJsonString(s)
     
 End Function
 
-End Sub
-
 Function ToYaml(vJSON As Variant) As String
     
     Select Case VarType(vJSON)
