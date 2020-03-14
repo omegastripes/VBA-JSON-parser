@@ -20,7 +20,7 @@ Start from example project, Excel workbook is available for downloading in the [
 
 Or
 
-Import **JSON.bas** module into the VBA Project for JSON processing. Need to include a reference to "Microsoft Scripting Runtime".
+Import **JSON.bas** module into the VBA Project for JSON processing. Need to include a reference to **Microsoft Scripting Runtime**.
 <details><summary>How to import?</summary>
 <p>
 
@@ -39,9 +39,16 @@ Or you may drag'n'drop downloaded JSON.bas from explorer window (or desktop) dir
 <details><summary>How to add reference?</summary>
 <p>
 
-Open Visual Basic Editor by pressing Alt+F11, click Menu - Tools - References, scroll down to "Microsoft Scripting Runtime" and check it, OK:
+Open Visual Basic Editor by pressing Alt+F11, click Menu - Tools - References, scroll down to **Microsoft Scripting Runtime** and check it, press OK:
 
 ![add reference](https://user-images.githubusercontent.com/3822668/71650262-ca579a00-2d25-11ea-9701-4c21dc280ad7.png)
+
+### ![attention](https://user-images.githubusercontent.com/3822668/76687641-cd7cd980-6636-11ea-808d-7fd088be307b.png) MS Word Object Library compatibility note
+When referencing both **Microsoft Scripting Runtime** and **Microsoft Word Object Library** make sure that **Microsoft Scripting Runtime** located above **Microsoft Word Object Library** in the the list, if not so then ajust the position by clicking Priority arrows to the right of the list.
+
+![Microsoft Scripting Runtime and Microsoft Word Object Library](https://user-images.githubusercontent.com/3822668/76686982-ed110380-6630-11ea-8d6e-3b4cab94b219.png)
+
+Otherwise you have to change all `Dictionary` references to `Scripting.Dictionary` in your VBA code.
 
 </p>
 </details>
