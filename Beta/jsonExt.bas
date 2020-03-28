@@ -1,5 +1,5 @@
 Attribute VB_Name = "jsonExt"
-' Extension (beta) v0.1 for VBA JSON parser, Backus-Naur form JSON parser based on RegEx v1.7.03
+' Extension (beta) v0.1 for VBA JSON parser, Backus-Naur form JSON parser based on RegEx v1.7.04
 ' Copyright (C) 2015-2020 omegastripes
 ' omegastripes@yandex.ru
 ' https://github.com/omegastripes/VBA-JSON-parser
@@ -43,19 +43,19 @@ Sub toArray(jsonData As Variant, body() As Variant, head() As Variant, Optional 
     Set headerList = New Dictionary
     If safeUBound(head) >= 0 Then
         For Each field In head
-            If Not headerList.exists(field) Then headerList(field) = headerList.Count
+            If Not headerList.exists(field) Then headerList(field) = headerList.count
         Next
-        j = headerList.Count - 1
+        j = headerList.count - 1
     Else
         j = 0
     End If
     Select Case VarType(jsonData)
         Case vbObject
-            If jsonData.Count > 0 Then
+            If jsonData.count > 0 Then
                 If Not skipNew Then
                     headerList("#") = 0
                 End If
-                ReDim data2dArray(0 To jsonData.Count - 1, 0 To j)
+                ReDim data2dArray(0 To jsonData.count - 1, 0 To j)
                 i = 0
                 For Each field In jsonData.keys
                     If skipNew Then
@@ -114,8 +114,8 @@ Private Sub toArrayElement(element As Variant, fieldName As String)
                 End If
             Else
                 If Not headerList.exists(fieldName) Then
-                    headerList(fieldName) = headerList.Count
-                    If UBound(data2dArray, 2) < headerList.Count - 1 Then ReDim Preserve data2dArray(0 To UBound(data2dArray, 1), 0 To headerList.Count - 1)
+                    headerList(fieldName) = headerList.count
+                    If UBound(data2dArray, 2) < headerList.count - 1 Then ReDim Preserve data2dArray(0 To UBound(data2dArray, 1), 0 To headerList.count - 1)
                 End If
                 j = headerList(fieldName)
                 data2dArray(i, j) = element
@@ -140,13 +140,13 @@ Private Sub flattenElement(element As Variant, property As String)
     
     Select Case True
         Case TypeOf element Is Dictionary
-            If element.Count > 0 Then
+            If element.count > 0 Then
                 For Each key In element.keys
                     flattenElement element(key), IIf(property <> "", property & "." & key, key)
                 Next
             End If
         Case IsObject(element)
-        Case isArray(element)
+        Case IsArray(element)
             For i = 0 To UBound(element)
                 flattenElement element(i), property & "[" & i & "]"
             Next
@@ -209,7 +209,7 @@ Public Sub filter(root, conds, inclusive, result, success)
     Dim decision
     Dim ok
     
-    If isArray(root) Then
+    If IsArray(root) Then
         data = Array()
         For k = 0 To safeUBound(root)
             evaluateCondition root(k), conds, decision, ok
@@ -279,10 +279,10 @@ Private Sub evaluateCondition(root, conds, result, success)
             selectElement root, conds(1), value1, exists
             success = exists
             If success Then
-                If isArray(value1) Then
+                If IsArray(value1) Then
                     result = UBound(value1) + 1
                 ElseIf TypeOf root Is Dictionary Then
-                    result = value1.Count
+                    result = value1.count
                 Else
                     success = False
                 End If
@@ -409,11 +409,12 @@ Public Sub sort(root, path, ascending, result)
     Dim entry
     Dim exists
     Dim i
+    Dim key
     
     ascend = ascending
     sample = Array()
     index = Array()
-    If isArray(root) Then
+    If IsArray(root) Then
         data = Array()
         last = safeUBound(root)
         If last >= 0 Then
@@ -465,10 +466,14 @@ Public Sub sort(root, path, ascending, result)
             quickSortIndex sample, index
             For k = 0 To last
                 i = index(k)
-                If IsObject(root(keys(i))) Then
-                    Set data(keys(i)) = root(keys(i))
+                key = keys(i)
+                Dim temp
+                If IsObject(root(key)) Then
+                    Set temp = root(key)
+                    Set data(key) = temp
                 Else
-                    data(keys(i)) = root(keys(i))
+                    temp = root(key)
+                    data(key) = temp
                 End If
             Next
         End If
@@ -558,7 +563,7 @@ Public Sub selectElement(root, path, entry, exists)
     Dim elt
     Dim i
     
-    If Not isArray(path) Then
+    If Not IsArray(path) Then
         If path = "" Then
             parts = Array()
             exists = True
@@ -592,7 +597,11 @@ Public Sub selectElement(root, path, entry, exists)
     For i = 0 To UBound(path)
         exists = False
         elt = path(i)
-        If isArray(entry) Then
+        If elt = "" Then
+            exists = True
+            Exit For
+        End If
+        If IsArray(entry) Then
             If Not VarType(elt) = vbLong Then Exit For
             If elt < LBound(entry) Or elt > UBound(entry) Then Exit For
         ElseIf TypeOf entry Is Dictionary Then
@@ -647,10 +656,13 @@ Public Sub joinDicts(acc, src, Optional addNew = True)
     Dim key
     If addNew Then
         For Each key In src.keys
+            Dim temp
             If IsObject(src(key)) Then
-                Set acc(key) = src(key)
+                Set temp = src(key)
+                Set acc(key) = temp
             Else
-                acc(key) = src(key)
+                temp = src(key)
+                acc(key) = temp
             End If
         Next
     Else
@@ -667,7 +679,7 @@ Public Sub joinDicts(acc, src, Optional addNew = True)
     
 End Sub
 
-Public Sub slice(src, Optional result, Optional ByVal a, Optional ByVal B)
+Public Sub slice(src, Optional result, Optional ByVal a, Optional ByVal b)
     
     Dim m As Long
     Dim void As Boolean
@@ -678,26 +690,26 @@ Public Sub slice(src, Optional result, Optional ByVal a, Optional ByVal B)
     Dim d As Long
     Dim keys
     
-    If isArray(src) Then
+    If IsArray(src) Then
         m = UBound(src)
     ElseIf TypeOf src Is Dictionary Then
-        m = src.Count - 1
+        m = src.count - 1
     End If
     If IsMissing(a) Then
         a = 0
     End If
-    If IsMissing(B) Then
-        B = m
+    If IsMissing(b) Then
+        b = m
     End If
-    If Not (IsNumeric(a) And IsNumeric(B)) Then
+    If Not (IsNumeric(a) And IsNumeric(b)) Then
         If Not IsMissing(result) Then
             assign src, result
         End If
         Exit Sub
     End If
-    If a < 0 And B < 0 Or a > m And B > m Then
+    If a < 0 And b < 0 Or a > m And b > m Then
         void = True
-    ElseIf a = 0 And B = m Then
+    ElseIf a = 0 And b = m Then
         full = True
     Else
         If a < 0 Then
@@ -705,25 +717,25 @@ Public Sub slice(src, Optional result, Optional ByVal a, Optional ByVal B)
         ElseIf a > m Then
             a = m
         End If
-        If B < 0 Then
-            B = 0
-        ElseIf B > m Then
-            B = m
+        If b < 0 Then
+            b = 0
+        ElseIf b > m Then
+            b = m
         End If
     End If
-    If isArray(src) Then
+    If IsArray(src) Then
         If void Then
             temp = Array()
         ElseIf full Then
             temp = src
         ElseIf a = 0 Then
             temp = src
-            ReDim Preserve temp(B)
+            ReDim Preserve temp(b)
         Else
-            ReDim temp(Abs(B - a))
+            ReDim temp(Abs(b - a))
             j = 0
-            d = IIf(a > B, -1, 1)
-            For i = a To B Step d
+            d = IIf(a > b, -1, 1)
+            For i = a To b Step d
                 assign src(i), temp(j)
                 j = j + 1
             Next
@@ -743,8 +755,8 @@ Public Sub slice(src, Optional result, Optional ByVal a, Optional ByVal B)
             Set temp = New Dictionary
             temp.CompareMode = src.CompareMode
             keys = src.keys
-            d = IIf(a > B, -1, 1)
-            For i = a To B Step d
+            d = IIf(a > b, -1, 1)
+            For i = a To b Step d
                 If IsObject(src(keys(i))) Then
                     Set temp(keys(i)) = src(keys(i))
                 Else
@@ -771,7 +783,7 @@ Public Sub getAvg(root, path, avg, n)
     Dim s
     
     n = 0
-    If isArray(root) Then
+    If IsArray(root) Then
         For k = 0 To safeUBound(root)
             selectElement root(k), path, entry, exists
             If exists Then
@@ -807,9 +819,9 @@ Function safeUBound(a)
     
 End Function
 
-Function isScalar(V) As Boolean
+Function isScalar(v) As Boolean
     
-    Select Case VarType(V)
+    Select Case VarType(v)
         Case vbByte, vbCurrency, vbDate, vbDecimal, vbDouble, vbEmpty, vbInteger, vbLong, vbSingle, vbString
             isScalar = True
         Case Else
@@ -844,11 +856,11 @@ Function cloneDictionary(srcDict)
 End Function
 
 Sub pushItem( _
-    destArray, _
-    sourceElement, _
-    Optional optionAppend As Boolean = True, _
-    Optional optionNestArrays As Boolean = True _
-)
+        destArray, _
+        sourceElement, _
+        Optional optionAppend As Boolean = True, _
+        Optional optionNestArrays As Boolean = True _
+    )
     
     ' not optionAppend => create array
     ' sourceElement array and optionAppend => do not create array
@@ -856,10 +868,10 @@ Sub pushItem( _
     Select Case True
         Case Not optionAppend Or IsEmpty(destArray)
             destArray = Array()
-        Case Not isArray(destArray)
+        Case Not IsArray(destArray)
             destArray = Array(destArray)
     End Select
-    If isArray(sourceElement) And Not optionNestArrays Then
+    If IsArray(sourceElement) And Not optionNestArrays Then
         Dim n As Long
         Dim j As Long
         Dim i As Long
