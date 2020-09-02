@@ -1,5 +1,5 @@
 Attribute VB_Name = "JSON"
-' VBA JSON parser, Backus-Naur form JSON parser based on RegEx v1.7.2
+' VBA JSON parser, Backus-Naur form JSON parser based on RegEx v1.7.21
 ' Copyright (C) 2015-2020 omegastripes
 ' omegastripes@yandex.ru
 ' https://github.com/omegastripes/VBA-JSON-parser
@@ -17,7 +17,6 @@ Attribute VB_Name = "JSON"
 ' You should have received a copy of the GNU General Public License
 ' along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-
 Option Explicit
 
 ' Need to include a reference to "Microsoft Scripting Runtime".
@@ -31,6 +30,9 @@ Private oHeader As Dictionary
 Private aData() As Variant
 Private i As Long
 Private sDelim As String
+Private sTabChar As String
+Private sLfChar As String
+Private sSpcChar As String
     
 Sub Parse(ByVal sSample As String, vJSON As Variant, sState As String)
     
@@ -184,8 +186,17 @@ Private Sub Retrieve(sTokenKey, vTransfer)
     
 End Sub
 
-Function Serialize(vJSON As Variant) As String
+Function Serialize(vJSON As Variant, Optional sTab As String = vbTab) As String
     
+    If sTab = "" Then
+        sTabChar = ""
+        sLfChar = ""
+        sSpcChar = ""
+    Else
+        sTabChar = sTab
+        sLfChar = vbCrLf
+        sSpcChar = " "
+    End If
     Set oChunks = New Dictionary
     SerializeElement vJSON, ""
     Serialize = Join(oChunks.Items(), "")
@@ -206,13 +217,13 @@ Private Sub SerializeElement(vElement As Variant, ByVal sIndent As String)
                 ElseIf vElement.Count = 0 Then
                     .Item(.Count) = "{}"
                 Else
-                    .Item(.Count) = "{" & vbCrLf
+                    .Item(.Count) = "{" & sLfChar
                     aKeys = vElement.Keys
                     For i = 0 To UBound(aKeys)
-                        .Item(.Count) = sIndent & vbTab & """" & EscapeJsonString(aKeys(i)) & """" & ": "
-                        SerializeElement vElement(aKeys(i)), sIndent & vbTab
+                        .Item(.Count) = sIndent & sTabChar & """" & EscapeJsonString(aKeys(i)) & """" & ":" & sSpcChar
+                        SerializeElement vElement(aKeys(i)), sIndent & sTabChar
                         If Not (i = UBound(aKeys)) Then .Item(.Count) = ","
-                        .Item(.Count) = vbCrLf
+                        .Item(.Count) = sLfChar
                     Next
                     .Item(.Count) = sIndent & "}"
                 End If
@@ -220,12 +231,12 @@ Private Sub SerializeElement(vElement As Variant, ByVal sIndent As String)
                 If UBound(vElement) = -1 Then
                     .Item(.Count) = "[]"
                 Else
-                    .Item(.Count) = "[" & vbCrLf
+                    .Item(.Count) = "[" & sLfChar
                     For i = 0 To UBound(vElement)
-                        .Item(.Count) = sIndent & vbTab
-                        SerializeElement vElement(i), sIndent & vbTab
+                        .Item(.Count) = sIndent & sTabChar
+                        SerializeElement vElement(i), sIndent & sTabChar
                         If Not (i = UBound(vElement)) Then .Item(.Count) = "," 'sResult = sResult & ","
-                        .Item(.Count) = vbCrLf
+                        .Item(.Count) = sLfChar
                     Next
                     .Item(.Count) = sIndent & "]"
                 End If
