@@ -1,5 +1,5 @@
 Attribute VB_Name = "jsonExt"
-' Extension (beta) v0.1 for VBA JSON parser, Backus-Naur form JSON parser based on RegEx v1.7.04
+' Extension (beta) v0.1.01 for VBA JSON parser, Backus-Naur form JSON parser based on RegEx v1.7.04
 ' Copyright (C) 2015-2020 omegastripes
 ' omegastripes@yandex.ru
 ' https://github.com/omegastripes/VBA-JSON-parser
@@ -189,7 +189,7 @@ Public Sub nestedArraysToArray(body, head, data, success)
     
 End Sub
 
-Public Sub filter(root, conds, inclusive, result, success)
+Public Sub filterElements(root, conds, inclusive, result, success)
     
     ' filtering
     ' condition operations
@@ -654,9 +654,9 @@ Public Sub joinDicts(acc, src, Optional addNew = True)
         Exit Sub
     End If
     Dim key
+    Dim temp
     If addNew Then
         For Each key In src.keys
-            Dim temp
             If IsObject(src(key)) Then
                 Set temp = src(key)
                 Set acc(key) = temp
@@ -669,9 +669,11 @@ Public Sub joinDicts(acc, src, Optional addNew = True)
         For Each key In src.keys
             If acc.exists(key) Then
                 If IsObject(src(key)) Then
-                    Set acc(key) = src(key)
+                    Set temp = src(key)
+                    Set acc(key) = temp
                 Else
-                    acc(key) = src(key)
+                    temp = src(key)
+                    acc(key) = temp
                 End If
             End If
         Next
@@ -750,7 +752,7 @@ Public Sub slice(src, Optional result, Optional ByVal a, Optional ByVal b)
             Set temp = New Dictionary
             temp.CompareMode = src.CompareMode
         ElseIf full Then
-            Set temp = cloneDictionary(src)
+            Set temp = jsonExt.cloneDictionary(src)
         Else
             Set temp = New Dictionary
             temp.CompareMode = src.CompareMode
