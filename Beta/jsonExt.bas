@@ -1,5 +1,4 @@
-Attribute VB_Name = "jsonExt"
-' Extension (beta) v0.1.01 for VBA JSON parser, Backus-Naur form JSON parser based on RegEx v1.7.04
+' Extension (beta) v0.1.02 for VBA JSON parser, Backus-Naur form JSON parser based on RegEx v1.7.04
 ' Copyright (C) 2015-2020 omegastripes
 ' omegastripes@yandex.ru
 ' https://github.com/omegastripes/VBA-JSON-parser
@@ -36,11 +35,10 @@ Sub toArray(jsonData As Variant, body() As Variant, head() As Variant, Optional 
     ' body - 2d array representing JSON data
     ' head - 1d array of property names
     
-    Dim field As Variant
-    Dim j As Long
-    
     skipNew = skipNewNames
     Set headerList = New Dictionary
+    Dim field As Variant
+    Dim j As Long
     If safeUBound(head) >= 0 Then
         For Each field In head
             If Not headerList.exists(field) Then headerList(field) = headerList.count
@@ -94,11 +92,10 @@ End Sub
 
 Private Sub toArrayElement(element As Variant, fieldName As String)
     
-    Dim field As Variant
     Dim j As Long
-    
     Select Case VarType(element)
         Case vbObject ' Collection of objects
+            Dim field As Variant
             For Each field In element.keys
                 toArrayElement element(field), fieldName & IIf(fieldName = "", "", ".") & field
             Next
@@ -135,18 +132,18 @@ End Function
 
 Private Sub flattenElement(element As Variant, property As String)
     
-    Dim key
-    Dim i As Long
     
     Select Case True
         Case TypeOf element Is Dictionary
             If element.count > 0 Then
+                Dim key
                 For Each key In element.keys
                     flattenElement element(key), IIf(property <> "", property & "." & key, key)
                 Next
             End If
         Case IsObject(element)
         Case IsArray(element)
+            Dim i As Long
             For i = 0 To UBound(element)
                 flattenElement element(i), property & "[" & i & "]"
             Next
@@ -166,20 +163,16 @@ Public Sub nestedArraysToArray(body, head, data, success)
     ' success - completed ok
     
     Dim buffer
-    Dim i
-    Dim entry
-    Dim j
-    Dim props
-    Dim temp
-    Dim num
-    Dim itv
-    
     buffer = Array()
+    Dim i
     For i = 0 To UBound(body)
+        Dim entry
         entry = body(i)
         success = UBound(head) = UBound(entry)
         If Not success Then Exit For
+        Dim props
         Set props = New Dictionary
+        Dim j
         For j = 0 To UBound(head)
             props(head(j)) = entry(j)
         Next
@@ -189,34 +182,104 @@ Public Sub nestedArraysToArray(body, head, data, success)
     
 End Sub
 
-Public Sub filterElements(root, conds, inclusive, result, success)
+Public Sub filterElements(root, conditions, inclusive, result, success)
     
-    ' filtering
-    ' condition operations
-    ' returns <boolean>
-    '   exists, <path>
-    '   = | <> | > | >= | < | <=, <value>, <value>
-    '   between | between[) | between(] | between(), <value>, <value>, <value>
-    '   in, <value>, <value> .. <value>
-    '   or | and | xor | not, <value>, <value> .. <value>
-    ' returns <value>
-    '   count, <path>
-    ' returns <value> | <entity>
-    '   value, <path>
+    ' filtering elements of root array or object
+    ' input:
+        ' root - source array or object which elements to be filtered
+        ' conditions - condition array or nested condition arrays that finally must be evaluated as boolean
+        ' inclusive - logical flag: element will be added to result if
+            ' evaluation is true and inclusive is true
+            ' evaluation is false or n/a and inclusive is false
+    ' output:
+        ' result - array or object with filtered elements
+        ' success - return false if root isn't array or object
+    ' condition array description:
+    ' supported operations
+        ' retrieve element by path relative to root as scalar value or any other JSON entity
+            ' <condition> = Array("value", <path>)
+            ' <path> - string, expression in JS format, path relative to element of root array or object
+            ' example: Array("value", "[0].volume")
+        ' return count of elements in root by path as number
+            ' <condition> = Array("count", <path>)
+            ' <path> - string, expression in JS format, path relative to element of root array or object
+            ' example: Array("count", ".shape.points")
+        ' check if element exists by path relative to root as boolean
+            ' <condition> = Array("exists", <path>)
+            ' <path> - string, expression in JS format, path relative to element of root array or object
+            ' example: Array("exists", ".items[0].restrictions")
+        ' compare two values and return result as boolean
+            ' <condition> = Array(<operation>, <expression>, <expression>)
+            ' <operation> - string: "=", "<>", ">", ">=", "<", "<="
+            ' <expression> - scalar, or nested <condition> evaluated as scalar
+            ' example: Array(">=", ".data.volume", 100) - evaluation is true if .data.volume >= 100
+        ' check if value belongs to interval specified by two values and return result as boolean
+            ' <condition> = Array(<operation>, <expression>, <expression>, <expression>)
+            ' <operation> - string: "between", "between[)", "between(]", "between()"
+            ' square brackets mean the end point is included, round parentheses mean it's excluded
+            ' <expression> - scalar, or nested <condition> evaluated as scalar
+            ' example: Array("between", ".", 0, 100) - evaluation is true if element value itself >= 0 and <= 100
+        ' boolean unary
+            ' <condition> = Array("not", <expression>)
+            ' <expression> - boolean, or nested <condition> evaluated as boolean
+            ' example: Array("not", Array("between", ".", 0, 100)) - evaluation is true if element value itself < 0 or > 100
+            ' "not" operation can be concatenated with any other operation which returns boolean
+            ' examples:
+            ' Array("not exists", ".items[0].restrictions")
+            ' Array("not >=", ".data.volume", 100)
+            ' Array("not between", ".", 0, 100)
+        ' boolean binary
+            ' <condition> = Array(<operation>, <expression>, <expression>)
+            ' <operation> - string: "or", "and", "xor"
+            ' <expression> - boolean, or nested <condition> evaluated as boolean
+            ' example: Array("and", Array("between", ".volume", 0, 100), Array(">", ".height", 50))
+            ' "or", "and" operations actually accept > 2 arguments, "or" provides lazy evaluation
+            ' <condition> = Array(<operation>, <expression>, <expression>, ...)
+            ' example:
+            ' Array("and", Array("between", ".volume", 0, 100), Array(">", ".height", 50), Array("<", Array("count", ".specification.items"), 10))
+            ' the same example serialized:
+            '   [
+            '       "and",
+            '       [
+            '           "between",
+            '           ".volume",
+            '           0,
+            '           100
+            '       ],
+            '       [
+            '           ">",
+            '           ".height",
+            '           50
+            '       ],
+            '       [
+            '           "<",
+            '           [
+            '               "count",
+            '               ".specification.items"
+            '           ],
+            '           10
+            '       ]
+            '   ]
     
     Dim data
     Dim k
+    Dim ret
     Dim decision
     Dim ok
-    
     If IsArray(root) Then
         data = Array()
         For k = 0 To safeUBound(root)
-            evaluateCondition root(k), conds, decision, ok
-            If ok And VarType(decision) = vbBoolean Then
-                If decision Xor Not inclusive Then
-                    pushItem data, root(k)
-                End If
+            evaluateExpression root(k), conditions, ret, ok
+            decision = False
+            Select Case False
+                Case ok
+                Case VarType(ret) = vbBoolean
+                Case ret
+                Case Else
+                    decision = True
+            End Select
+            If decision Xor Not inclusive Then
+                pushItem data, root(k)
             End If
         Next
         result = data
@@ -224,14 +287,20 @@ Public Sub filterElements(root, conds, inclusive, result, success)
     ElseIf TypeOf root Is Dictionary Then
         Set data = New Dictionary
         For Each k In root.keys
-            evaluateCondition root(k), conds, decision, ok
-            If ok And VarType(decision) = vbBoolean Then
-                If decision Xor Not inclusive Then
-                    If IsObject(root(k)) Then
-                        Set data(k) = root(k)
-                    Else
-                        data(k) = root(k)
-                    End If
+            evaluateExpression root(k), conditions, ret, ok
+            decision = False
+            Select Case False
+                Case ok
+                Case VarType(ret) = vbBoolean
+                Case ret
+                Case Else
+                    decision = True
+            End Select
+            If decision Xor Not inclusive Then
+                If IsObject(root(k)) Then
+                    Set data(k) = root(k)
+                Else
+                    data(k) = root(k)
                 End If
             End If
         Next
@@ -243,22 +312,19 @@ Public Sub filterElements(root, conds, inclusive, result, success)
     
 End Sub
 
-Private Sub evaluateCondition(root, conds, result, success)
+Private Sub evaluateExpression(root, expr, result, success)
     
     Dim operation
-    Dim subconds
+    operation = LCase(expr(0))
     Dim value1
     Dim value2
     Dim value3
     Dim ok
-    Dim exists
-    Dim i
-    
-    operation = LCase(conds(0))
     If Left(operation, 4) = "not " Then
-        subconds = conds
-        subconds(0) = Mid(operation, 5)
-        evaluateCondition root, subconds, value1, ok
+        Dim subexpr
+        subexpr = expr
+        subexpr(0) = Mid(operation, 5)
+        evaluateExpression root, subexpr, value1, ok
         If ok And VarType(value1) = vbBoolean Then
             result = Not value1
             success = True
@@ -266,17 +332,18 @@ Private Sub evaluateCondition(root, conds, result, success)
         End If
     End If
     success = False
+    Dim exists
     Select Case operation
         Case ""
         Case "value"
-            selectElement root, conds(1), value1, exists
+            selectElement root, expr(1), value1, exists
             success = exists
             If Not success Then
                 Exit Sub
             End If
             assign value1, result
         Case "count"
-            selectElement root, conds(1), value1, exists
+            selectElement root, expr(1), value1, exists
             success = exists
             If success Then
                 If IsArray(value1) Then
@@ -288,32 +355,32 @@ Private Sub evaluateCondition(root, conds, result, success)
                 End If
             End If
         Case "exists"
-            selectElement root, conds(1), value1, exists
+            selectElement root, expr(1), value1, exists
             result = exists
             success = True
         Case "=", "<>", ">", ">=", "<", "<=", "between", "between[)", "between(]", "between()"
-            If isScalar(conds(1)) Then
-                value1 = conds(1)
+            If isScalar(expr(1)) Then
+                value1 = expr(1)
             Else
-                evaluateCondition root, conds(1), value1, ok
+                evaluateExpression root, expr(1), value1, ok
                 If Not (ok And isScalar(value1)) Then
                     Exit Sub
                 End If
             End If
-            If isScalar(conds(2)) Then
-                value2 = conds(2)
+            If isScalar(expr(2)) Then
+                value2 = expr(2)
             Else
-                evaluateCondition root, conds(2), value2, ok
+                evaluateExpression root, expr(2), value2, ok
                 If Not (ok And isScalar(value2)) Then
                     Exit Sub
                 End If
             End If
             Select Case operation
                 Case "between", "between[)", "between(]", "between()"
-                    If isScalar(conds(3)) Then
-                        value3 = conds(3)
+                    If isScalar(expr(3)) Then
+                        value3 = expr(3)
                     Else
-                        evaluateCondition root, conds(3), value3, ok
+                        evaluateExpression root, expr(3), value3, ok
                         If Not (ok And isScalar(value3)) Then
                             Exit Sub
                         End If
@@ -344,11 +411,12 @@ Private Sub evaluateCondition(root, conds, result, success)
             success = True
         Case "or", "and"
             value2 = True
-            For i = 1 To UBound(conds)
-                If VarType(conds(i)) = vbBoolean Then
-                    value1 = conds(i)
+            Dim i
+            For i = 1 To UBound(expr)
+                If VarType(expr(i)) = vbBoolean Then
+                    value1 = expr(i)
                 Else
-                    evaluateCondition root, conds(i), value1, ok
+                    evaluateExpression root, expr(i), value1, ok
                     If Not (ok And VarType(value1) = vbBoolean) Then
                         Exit Sub
                     End If
@@ -372,10 +440,10 @@ Private Sub evaluateCondition(root, conds, result, success)
             End If
             success = True
         Case "xor", "not"
-            If VarType(conds(1)) = vbBoolean Then
-                value1 = conds(1)
+            If VarType(expr(1)) = vbBoolean Then
+                value1 = expr(1)
             Else
-                evaluateCondition root, conds(1), value1, ok
+                evaluateExpression root, expr(1), value1, ok
                 If Not (ok And VarType(value1) = vbBoolean) Then
                     Exit Sub
                 End If
@@ -383,10 +451,10 @@ Private Sub evaluateCondition(root, conds, result, success)
             If operation = "not" Then
                 result = Not value1
             Else
-                If VarType(conds(2)) = vbBoolean Then
-                    value2 = conds(2)
+                If VarType(expr(2)) = vbBoolean Then
+                    value2 = expr(2)
                 Else
-                    evaluateCondition root, conds(2), value2, ok
+                    evaluateExpression root, expr(2), value2, ok
                     If Not (ok And VarType(value2) = vbBoolean) Then
                         Exit Sub
                     End If
@@ -400,20 +468,25 @@ End Sub
 
 Public Sub sort(root, path, ascending, result)
     
+    ' sorting elements of root array or object
+    ' input:
+        ' root - source array or object which elements to be filtered
+        ' path - string, expression in JS format, path relative to element of root array or object
+        ' ascending - sorting direction
+    ' output:
+        ' result - array or object with sorted elements
+    
+    ascend = ascending
     Dim sample()
+    sample = Array()
     Dim index()
+    index = Array()
     Dim data
     Dim last
     Dim k
-    Dim keys
     Dim entry
     Dim exists
     Dim i
-    Dim key
-    
-    ascend = ascending
-    sample = Array()
-    index = Array()
     If IsArray(root) Then
         data = Array()
         last = safeUBound(root)
@@ -446,6 +519,7 @@ Public Sub sort(root, path, ascending, result)
         result = data
     ElseIf TypeOf root Is Dictionary Then
         Set data = New Dictionary
+        Dim keys
         keys = root.keys
         last = UBound(keys)
         If last >= 0 Then
@@ -466,6 +540,7 @@ Public Sub sort(root, path, ascending, result)
             quickSortIndex sample, index
             For k = 0 To last
                 i = index(k)
+                Dim key
                 key = keys(i)
                 Dim temp
                 If IsObject(root(key)) Then
@@ -487,27 +562,25 @@ End Sub
 Private Sub quickSortIndex(sample, index)
     
     ' https://rosettacode.org/wiki/Sorting_algorithms/Quicksort
-    
     Dim last As Long
-    Dim ltArray
-    Dim eqArray
-    Dim gtArray
-    Dim pivot
-    Dim elt
-    Dim i As Long
-    Dim gtCheck
-    Dim ltCheck
-    Dim p As Long
-    
     last = UBound(index)
     If last > 0 Then
+        Dim ltArray
         ltArray = Array()
+        Dim eqArray
         eqArray = Array()
+        Dim gtArray
         gtArray = Array()
+        Dim p As Long
         p = Int((last + 1) / 2)
+        Dim pivot
         pivot = sample(index(p))
+        Dim i As Long
         For i = 0 To last
+            Dim elt
             elt = sample(index(i))
+            Dim gtCheck
+            Dim ltCheck
             If ascend Then
                 gtCheck = elt > pivot
                 ltCheck = elt < pivot
@@ -558,16 +631,23 @@ End Sub
 
 Public Sub selectElement(root, path, entry, exists)
     
-    Dim elts
-    Dim parts
+    ' retrieve entity from root array or object by relative path
+    ' input:
+        ' root - source array or object entity to be retrieved from
+        ' path - string, expression in JS format, path relative to root array or object
+    ' output:
+        ' entry - destination entity retrieved from root by relative path
+        ' exists - return false if destination entity doesn't exists or path is invalid
+    
     Dim elt
     Dim i
-    
     If Not IsArray(path) Then
+        Dim parts
         If path = "" Then
             parts = Array()
             exists = True
         Else
+            Dim elts
             elts = Split(Replace(Replace(Replace(path, ".", "|."), "[", "|["), "|.|[", "|.["), "|")
             ReDim parts(UBound(elts) - 1)
             If elts(0) <> "" Then Exit Sub
@@ -620,18 +700,16 @@ Public Sub selectElement(root, path, entry, exists)
 End Sub
 
 Public Sub joinSubDicts(acc, src, Optional addNew = True)
-
-    Dim key
-    Dim accSubDict
-    Dim subKey
-    Dim srcSubDict
     
     If Not (TypeOf acc Is Dictionary And TypeOf src Is Dictionary) Then
         Exit Sub
     End If
+    Dim key
     For Each key In src.keys
         If TypeOf src(key) Is Dictionary Then
+            Dim srcSubDict
             Set srcSubDict = src(key)
+            Dim accSubDict
             Set accSubDict = Nothing
             If acc.exists(key) Then
                 If TypeOf acc(key) Is Dictionary Then
@@ -645,7 +723,7 @@ Public Sub joinSubDicts(acc, src, Optional addNew = True)
             joinDicts accSubDict, srcSubDict, addNew
         End If
     Next
-
+    
 End Sub
 
 Public Sub joinDicts(acc, src, Optional addNew = True)
@@ -684,14 +762,6 @@ End Sub
 Public Sub slice(src, Optional result, Optional ByVal a, Optional ByVal b)
     
     Dim m As Long
-    Dim void As Boolean
-    Dim full As Boolean
-    Dim temp
-    Dim i
-    Dim j
-    Dim d As Long
-    Dim keys
-    
     If IsArray(src) Then
         m = UBound(src)
     ElseIf TypeOf src Is Dictionary Then
@@ -703,12 +773,17 @@ Public Sub slice(src, Optional result, Optional ByVal a, Optional ByVal b)
     If IsMissing(b) Then
         b = m
     End If
+    Dim temp
+    Dim i
+    Dim d As Long
     If Not (IsNumeric(a) And IsNumeric(b)) Then
         If Not IsMissing(result) Then
             assign src, result
         End If
         Exit Sub
     End If
+    Dim void As Boolean
+    Dim full As Boolean
     If a < 0 And b < 0 Or a > m And b > m Then
         void = True
     ElseIf a = 0 And b = m Then
@@ -735,6 +810,7 @@ Public Sub slice(src, Optional result, Optional ByVal a, Optional ByVal b)
             ReDim Preserve temp(b)
         Else
             ReDim temp(Abs(b - a))
+            Dim j
             j = 0
             d = IIf(a > b, -1, 1)
             For i = a To b Step d
@@ -756,6 +832,7 @@ Public Sub slice(src, Optional result, Optional ByVal a, Optional ByVal b)
         Else
             Set temp = New Dictionary
             temp.CompareMode = src.CompareMode
+            Dim keys
             keys = src.keys
             d = IIf(a > b, -1, 1)
             For i = a To b Step d
@@ -783,7 +860,6 @@ Public Sub getAvg(root, path, avg, n)
     Dim entry
     Dim exists
     Dim s
-    
     n = 0
     If IsArray(root) Then
         For k = 0 To safeUBound(root)
@@ -835,20 +911,20 @@ End Function
 Function cloneDictionary(srcDict)
     
     Dim destDict As Dictionary
-    Dim propName
-    Dim propValue
-    
     Set destDict = New Dictionary
     If TypeOf srcDict Is Dictionary Then
         If Not srcDict Is Nothing Then
             destDict.CompareMode = srcDict.CompareMode
-            For Each propName In srcDict.keys
-                If IsObject(srcDict(propName)) Then
-                    Set propValue = srcDict(propName)
-                    Set destDict(propName) = propValue
+            Dim key
+            Dim temp
+            For Each key In srcDict.keys
+                If IsObject(srcDict(key)) Then
+                    
+                    Set temp = srcDict(key)
+                    Set destDict(key) = temp
                 Else
-                    propValue = srcDict(propName)
-                    destDict(propName) = propValue
+                    temp = srcDict(key)
+                    destDict(key) = temp
                 End If
             Next
         End If
