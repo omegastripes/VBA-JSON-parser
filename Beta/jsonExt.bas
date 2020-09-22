@@ -1,4 +1,5 @@
-' Extension (beta) v0.1.02 for VBA JSON parser, Backus-Naur form JSON parser based on RegEx v1.7.04
+Attribute VB_Name = "jsonExt"
+' Extension (beta) v0.1.1 for VBA JSON parser, Backus-Naur form JSON parser based on RegEx v1.7.21
 ' Copyright (C) 2015-2020 omegastripes
 ' omegastripes@yandex.ru
 ' https://github.com/omegastripes/VBA-JSON-parser
@@ -55,7 +56,7 @@ Sub toArray(jsonData As Variant, body() As Variant, head() As Variant, Optional 
                 End If
                 ReDim data2dArray(0 To jsonData.count - 1, 0 To j)
                 i = 0
-                For Each field In jsonData.keys
+                For Each field In jsonData.keys()
                     If skipNew Then
                         If headerList.exists("#") Then
                             j = headerList("#")
@@ -96,7 +97,7 @@ Private Sub toArrayElement(element As Variant, fieldName As String)
     Select Case VarType(element)
         Case vbObject ' Collection of objects
             Dim field As Variant
-            For Each field In element.keys
+            For Each field In element.keys()
                 toArrayElement element(field), fieldName & IIf(fieldName = "", "", ".") & field
             Next
         Case Is >= vbArray  ' Collection of arrays
@@ -137,7 +138,7 @@ Private Sub flattenElement(element As Variant, property As String)
         Case TypeOf element Is Dictionary
             If element.count > 0 Then
                 Dim key
-                For Each key In element.keys
+                For Each key In element.keys()
                     flattenElement element(key), IIf(property <> "", property & "." & key, key)
                 Next
             End If
@@ -156,11 +157,11 @@ End Sub
 Public Sub nestedArraysToArray(body, head, data, success)
     
     ' Input:
-    ' body - nested 1d arrays representing table data
-    ' head - 1d array of property names
+        ' body - nested 1d arrays representing table data
+        ' head - 1d array of property names
     ' Output:
-    ' data - resulting array with JSON data
-    ' success - completed ok
+        ' data - resulting array with JSON data
+        ' success - false if head and nested array sizes not match
     
     Dim buffer
     buffer = Array()
@@ -188,12 +189,12 @@ Public Sub filterElements(root, conditions, inclusive, result, success)
     ' input:
         ' root - source array or object which elements to be filtered
         ' conditions - condition array or nested condition arrays that finally must be evaluated as boolean
-        ' inclusive - logical flag: element will be added to result if
+        ' inclusive - element will be added to result if
             ' evaluation is true and inclusive is true
             ' evaluation is false or n/a and inclusive is false
     ' output:
         ' result - array or object with filtered elements
-        ' success - return false if root isn't array or object
+        ' success - false if root isn't array or object
     ' condition array description:
     ' supported operations
         ' retrieve element by path relative to root as scalar value or any other JSON entity
@@ -286,7 +287,7 @@ Public Sub filterElements(root, conditions, inclusive, result, success)
         success = True
     ElseIf TypeOf root Is Dictionary Then
         Set data = New Dictionary
-        For Each k In root.keys
+        For Each k In root.keys()
             evaluateExpression root(k), conditions, ret, ok
             decision = False
             Select Case False
@@ -305,6 +306,66 @@ Public Sub filterElements(root, conditions, inclusive, result, success)
             End If
         Next
         Set result = data
+        success = True
+    Else
+        success = False
+    End If
+    
+End Sub
+
+Public Sub groupElements(root, path, full, result, success)
+    
+    ' groping elements of root array or object
+    ' input:
+        ' root - source array or object which elements to be grouped
+        ' path - string, expression in JS format, path relative to element of root array or object to entity it grouped by
+        ' full - true to create null group for elements having no specified path
+    ' output:
+        ' result - dictionary with sorted elements with group names as keys
+        ' success - false if root isn't array or object
+    
+    Dim k
+    Dim entry
+    Dim exists
+    If IsArray(root) Then
+        Set result = New Dictionary
+        Dim buffer
+        buffer = Array()
+        For k = 0 To safeUBound(root)
+            selectElement root(k), path, entry, exists
+            If exists Or full Then
+                If Not exists Then
+                    entry = Null
+                End If
+                If Not result.exists(entry) Then
+                    result(entry) = result.count
+                    jsonExt.pushItem buffer, Array()
+                End If
+                jsonExt.pushItem buffer(result(entry)), root(k)
+            End If
+        Next
+        For Each k In result.keys()
+            result(k) = buffer(result(k))
+        Next
+        success = True
+    ElseIf TypeOf root Is Dictionary Then
+        Set result = New Dictionary
+        For Each k In root.keys()
+            selectElement root(k), path, entry, exists
+            If exists Or full Then
+                If Not exists Then
+                    entry = Null
+                End If
+                If Not result.exists(entry) Then
+                    Set result(entry) = New Dictionary
+                End If
+                If IsObject(root(k)) Then
+                    Set result(entry)(k) = root(k)
+                Else
+                    result(entry)(k) = root(k)
+                End If
+            End If
+        Next
         success = True
     Else
         success = False
@@ -470,8 +531,8 @@ Public Sub sort(root, path, ascending, result)
     
     ' sorting elements of root array or object
     ' input:
-        ' root - source array or object which elements to be filtered
-        ' path - string, expression in JS format, path relative to element of root array or object
+        ' root - source array or object which elements to be sorted
+        ' path - string, expression in JS format, path relative to element of root array or object to entity it sorted by
         ' ascending - sorting direction
     ' output:
         ' result - array or object with sorted elements
@@ -520,7 +581,7 @@ Public Sub sort(root, path, ascending, result)
     ElseIf TypeOf root Is Dictionary Then
         Set data = New Dictionary
         Dim keys
-        keys = root.keys
+        keys = root.keys()
         last = UBound(keys)
         If last >= 0 Then
             ReDim sample(last)
@@ -636,6 +697,7 @@ Public Sub selectElement(root, path, entry, exists)
         ' root - source array or object entity to be retrieved from
         ' path - string, expression in JS format, path relative to root array or object
     ' output:
+        ' path - array of path components
         ' entry - destination entity retrieved from root by relative path
         ' exists - return false if destination entity doesn't exists or path is invalid
     
@@ -705,7 +767,7 @@ Public Sub joinSubDicts(acc, src, Optional addNew = True)
         Exit Sub
     End If
     Dim key
-    For Each key In src.keys
+    For Each key In src.keys()
         If TypeOf src(key) Is Dictionary Then
             Dim srcSubDict
             Set srcSubDict = src(key)
@@ -734,7 +796,7 @@ Public Sub joinDicts(acc, src, Optional addNew = True)
     Dim key
     Dim temp
     If addNew Then
-        For Each key In src.keys
+        For Each key In src.keys()
             If IsObject(src(key)) Then
                 Set temp = src(key)
                 Set acc(key) = temp
@@ -744,7 +806,7 @@ Public Sub joinDicts(acc, src, Optional addNew = True)
             End If
         Next
     Else
-        For Each key In src.keys
+        For Each key In src.keys()
             If acc.exists(key) Then
                 If IsObject(src(key)) Then
                     Set temp = src(key)
@@ -833,7 +895,7 @@ Public Sub slice(src, Optional result, Optional ByVal a, Optional ByVal b)
             Set temp = New Dictionary
             temp.CompareMode = src.CompareMode
             Dim keys
-            keys = src.keys
+            keys = src.keys()
             d = IIf(a > b, -1, 1)
             For i = a To b Step d
                 If IsObject(src(keys(i))) Then
@@ -872,7 +934,7 @@ Public Sub getAvg(root, path, avg, n)
             End If
         Next
     ElseIf TypeOf root Is Dictionary Then
-        For Each k In root.keys
+        For Each k In root.keys()
             selectElement root(k), path, entry, exists
             If exists Then
                 If IsNumeric(entry) Then
@@ -884,6 +946,94 @@ Public Sub getAvg(root, path, avg, n)
     End If
     If n > 0 Then
         avg = s / n
+    End If
+    
+End Sub
+
+Public Sub getMax(root, path, ret, n)
+    
+    Dim k
+    Dim entry
+    Dim exists
+    Dim v
+    v = Null
+    Dim e
+    n = 0
+    If IsArray(root) Then
+        For k = 0 To safeUBound(root)
+            selectElement root(k), path, entry, exists
+            If exists Then
+                If IsNumeric(entry) Then
+                    e = CDbl(entry)
+                    n = n + 1
+                    If v > e Then
+                    Else
+                        v = e
+                    End If
+                End If
+            End If
+        Next
+    ElseIf TypeOf root Is Dictionary Then
+        For Each k In root.keys()
+            selectElement root(k), path, entry, exists
+            If exists Then
+                If IsNumeric(entry) Then
+                    e = CDbl(entry)
+                    n = n + 1
+                    If v > e Then
+                    Else
+                        v = e
+                    End If
+                End If
+            End If
+        Next
+    End If
+    If n > 0 Then
+        ret = v
+    End If
+    
+End Sub
+
+Public Sub getMin(root, path, ret, n)
+    
+    Dim k
+    Dim entry
+    Dim exists
+    Dim v
+    v = Null
+    Dim e
+    n = 0
+    If IsArray(root) Then
+        For k = 0 To safeUBound(root)
+            selectElement root(k), path, entry, exists
+            If exists Then
+                If IsNumeric(entry) Then
+                    e = CDbl(entry)
+                    n = n + 1
+                    If v < e Then
+                    Else
+                        v = e
+                    End If
+                End If
+            End If
+        Next
+    ElseIf TypeOf root Is Dictionary Then
+        For Each k In root.keys()
+            selectElement root(k), path, entry, exists
+            If exists Then
+                If IsNumeric(entry) Then
+                    e = CDbl(entry)
+                    n = n + 1
+                    If v < e Then
+                    Else
+                        v = e
+                    End If
+                End If
+            End If
+        Next
+    End If
+    If n > 0 Then
+        ret = v
     End If
     
 End Sub
@@ -917,7 +1067,7 @@ Function cloneDictionary(srcDict)
             destDict.CompareMode = srcDict.CompareMode
             Dim key
             Dim temp
-            For Each key In srcDict.keys
+            For Each key In srcDict.keys()
                 If IsObject(srcDict(key)) Then
                     
                     Set temp = srcDict(key)
