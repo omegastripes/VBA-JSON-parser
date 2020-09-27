@@ -1,5 +1,5 @@
 Attribute VB_Name = "jsonExt"
-' Extension (beta) v0.1.1 for VBA JSON parser, Backus-Naur form JSON parser based on RegEx v1.7.21
+' Extension (beta) v0.1.101 for VBA JSON parser, Backus-Naur form JSON parser based on RegEx v1.7.21
 ' Copyright (C) 2015-2020 omegastripes
 ' omegastripes@yandex.ru
 ' https://github.com/omegastripes/VBA-JSON-parser
@@ -216,40 +216,46 @@ Public Sub filterElements(root, conditions, inclusive, result, success)
             ' example: Array(">=", ".data.volume", 100) - evaluation is true if .data.volume >= 100
         ' check if value belongs to interval specified by two values and return result as boolean
             ' <condition> = Array(<operation>, <expression>, <expression>, <expression>)
-            ' <operation> - string: "between", "between[)", "between(]", "between()"
+            ' <operation> - string: "[]", "[)", "(]", "()"
             ' square brackets mean the end point is included, round parentheses mean it's excluded
             ' <expression> - scalar, or nested <condition> evaluated as scalar
-            ' example: Array("between", ".", 0, 100) - evaluation is true if element value itself >= 0 and <= 100
+            ' example: Array("[]", ".", 0, 100) - evaluation is true if element value itself >= 0 and <= 100
         ' boolean unary
             ' <condition> = Array("not", <expression>)
             ' <expression> - boolean, or nested <condition> evaluated as boolean
-            ' example: Array("not", Array("between", ".", 0, 100)) - evaluation is true if element value itself < 0 or > 100
+            ' example: Array("not", Array("[]", ".", 0, 100)) - evaluation is true if element value itself < 0 or > 100
             ' "not" operation can be concatenated with any other operation which returns boolean
             ' examples:
             ' Array("not exists", ".items[0].restrictions")
             ' Array("not >=", ".data.volume", 100)
-            ' Array("not between", ".", 0, 100)
+            ' Array("not ()", ".", 0, 100)
         ' boolean binary
             ' <condition> = Array(<operation>, <expression>, <expression>)
             ' <operation> - string: "or", "and", "xor"
             ' <expression> - boolean, or nested <condition> evaluated as boolean
-            ' example: Array("and", Array("between", ".volume", 0, 100), Array(">", ".height", 50))
+            ' example: Array("and", Array("[]", ".volume", 0, 100), Array(">", ".height", 50))
             ' "or", "and" operations actually accept > 2 arguments, "or" provides lazy evaluation
             ' <condition> = Array(<operation>, <expression>, <expression>, ...)
             ' example:
-            ' Array("and", Array("between", ".volume", 0, 100), Array(">", ".height", 50), Array("<", Array("count", ".specification.items"), 10))
+            ' Array("and", Array("[]", Array("value", ".volume"), 0, 100), Array(">", Array("value", ".height"), 50), Array("<", Array("count", ".specification.items"), 10))
             ' the same example serialized:
             '   [
             '       "and",
             '       [
-            '           "between",
-            '           ".volume",
+            '           "[]",
+            '           [
+            '               "value",
+            '               ".volume"
+            '           ],
             '           0,
             '           100
             '       ],
             '       [
             '           ">",
-            '           ".height",
+            '           [
+            '               "value",
+            '               ".height"
+            '           ],
             '           50
             '       ],
             '       [
@@ -315,10 +321,10 @@ End Sub
 
 Public Sub groupElements(root, path, full, result, success)
     
-    ' groping elements of root array or object
+    ' grouping elements of root array or object
     ' input:
         ' root - source array or object which elements to be grouped
-        ' path - string, expression in JS format, path relative to element of root array or object to entity it grouped by
+        ' path - string, expression in JS format, path relative to element of root array or object to entity it grouped by, or array of path components
         ' full - true to create null group for elements having no specified path
     ' output:
         ' result - dictionary with sorted elements with group names as keys
@@ -419,7 +425,7 @@ Private Sub evaluateExpression(root, expr, result, success)
             selectElement root, expr(1), value1, exists
             result = exists
             success = True
-        Case "=", "<>", ">", ">=", "<", "<=", "between", "between[)", "between(]", "between()"
+        Case "=", "<>", ">", ">=", "<", "<=", "[]", "[)", "(]", "()"
             If isScalar(expr(1)) Then
                 value1 = expr(1)
             Else
@@ -437,7 +443,7 @@ Private Sub evaluateExpression(root, expr, result, success)
                 End If
             End If
             Select Case operation
-                Case "between", "between[)", "between(]", "between()"
+                Case "[]", "[)", "(]", "()"
                     If isScalar(expr(3)) Then
                         value3 = expr(3)
                     Else
@@ -460,13 +466,13 @@ Private Sub evaluateExpression(root, expr, result, success)
                     result = CBool(value1 < value2)
                 Case "<="
                     result = CBool(value1 <= value2)
-                Case "between"
+                Case "[]"
                     result = CBool((value1 >= value2) And (value1 <= value3))
-                Case "between[)"
+                Case "[)"
                     result = CBool((value1 >= value2) And (value1 < value3))
-                Case "between(]"
+                Case "(]"
                     result = CBool((value1 > value2) And (value1 <= value3))
-                Case "between()"
+                Case "()"
                     result = CBool((value1 > value2) And (value1 < value3))
             End Select
             success = True
@@ -532,7 +538,7 @@ Public Sub sort(root, path, ascending, result)
     ' sorting elements of root array or object
     ' input:
         ' root - source array or object which elements to be sorted
-        ' path - string, expression in JS format, path relative to element of root array or object to entity it sorted by
+        ' path - string, expression in JS format, path relative to element of root array or object to entity it sorted by, or array of path components
         ' ascending - sorting direction
     ' output:
         ' result - array or object with sorted elements
@@ -695,7 +701,7 @@ Public Sub selectElement(root, path, entry, exists)
     ' retrieve entity from root array or object by relative path
     ' input:
         ' root - source array or object entity to be retrieved from
-        ' path - string, expression in JS format, path relative to root array or object
+        ' path - string, expression in JS format, path relative to root array or object, or array of path components
     ' output:
         ' path - array of path components
         ' entry - destination entity retrieved from root by relative path
@@ -916,20 +922,31 @@ Public Sub slice(src, Optional result, Optional ByVal a, Optional ByVal b)
     
 End Sub
 
-Public Sub getAvg(root, path, avg, n)
+Public Sub getAvg(root, path, avg, sum, qty)
     
+    ' compute sum and average of root array or object values by relative path
+    ' input:
+        ' root - source array or object of entities to be processed
+        ' path - string, expression in JS format, path relative to root array or object, or array of path components
+    ' output:
+        ' path - array of path components
+        ' avg - avg value
+        ' sum - sum of values
+        ' qty - amount of processed entities
+    
+    avg = Null
     Dim k
     Dim entry
     Dim exists
-    Dim s
-    n = 0
+    sum = 0
+    qty = 0
     If IsArray(root) Then
         For k = 0 To safeUBound(root)
             selectElement root(k), path, entry, exists
             If exists Then
                 If IsNumeric(entry) Then
-                    n = n + 1
-                    s = s + CDbl(entry)
+                    qty = qty + 1
+                    sum = sum + CDbl(entry)
                 End If
             End If
         Next
@@ -938,37 +955,47 @@ Public Sub getAvg(root, path, avg, n)
             selectElement root(k), path, entry, exists
             If exists Then
                 If IsNumeric(entry) Then
-                    n = n + 1
-                    s = s + CDbl(entry)
+                    qty = qty + 1
+                    sum = sum + CDbl(entry)
                 End If
             End If
         Next
     End If
-    If n > 0 Then
-        avg = s / n
+    If qty > 0 Then
+        avg = sum / qty
     End If
     
 End Sub
 
-Public Sub getMax(root, path, ret, n)
+Public Sub getMax(root, path, key, ret, qty)
     
+    ' retrieve entity from root array or object having max value by relative path
+    ' input:
+        ' root - source array or object entity to be retrieved from
+        ' path - string, expression in JS format, path relative to root array or object, or array of path components
+    ' output:
+        ' path - array of path components
+        ' key - max value entity key
+        ' ret - max value
+        ' qty - amount of processed entities
+    
+    ret = Null
     Dim k
     Dim entry
     Dim exists
-    Dim v
-    v = Null
     Dim e
-    n = 0
+    qty = 0
     If IsArray(root) Then
         For k = 0 To safeUBound(root)
             selectElement root(k), path, entry, exists
             If exists Then
                 If IsNumeric(entry) Then
                     e = CDbl(entry)
-                    n = n + 1
-                    If v > e Then
+                    qty = qty + 1
+                    If ret > e Then
                     Else
-                        v = e
+                        ret = e
+                        key = k
                     End If
                 End If
             End If
@@ -979,40 +1006,48 @@ Public Sub getMax(root, path, ret, n)
             If exists Then
                 If IsNumeric(entry) Then
                     e = CDbl(entry)
-                    n = n + 1
-                    If v > e Then
+                    qty = qty + 1
+                    If ret > e Then
                     Else
-                        v = e
+                        ret = e
+                        key = k
                     End If
                 End If
             End If
         Next
-    End If
-    If n > 0 Then
-        ret = v
     End If
     
 End Sub
 
-Public Sub getMin(root, path, ret, n)
+Public Sub getMin(root, path, key, ret, qty)
+    
+    ' retrieve entity from root array or object having min value by relative path
+    ' input:
+        ' root - source array or object entity to be retrieved from
+        ' path - string, expression in JS format, path relative to root array or object, or array of path components
+    ' output:
+        ' path - array of path components
+        ' key - min value entity key
+        ' ret - min value
+        ' qty - amount of processed entities
     
     Dim k
     Dim entry
     Dim exists
-    Dim v
-    v = Null
+    ret = Null
     Dim e
-    n = 0
+    qty = 0
     If IsArray(root) Then
         For k = 0 To safeUBound(root)
             selectElement root(k), path, entry, exists
             If exists Then
                 If IsNumeric(entry) Then
                     e = CDbl(entry)
-                    n = n + 1
-                    If v < e Then
+                    qty = qty + 1
+                    If ret < e Then
                     Else
-                        v = e
+                        ret = e
+                        key = k
                     End If
                 End If
             End If
@@ -1023,17 +1058,15 @@ Public Sub getMin(root, path, ret, n)
             If exists Then
                 If IsNumeric(entry) Then
                     e = CDbl(entry)
-                    n = n + 1
-                    If v < e Then
+                    qty = qty + 1
+                    If ret < e Then
                     Else
-                        v = e
+                        ret = e
+                        key = k
                     End If
                 End If
             End If
         Next
-    End If
-    If n > 0 Then
-        ret = v
     End If
     
 End Sub
