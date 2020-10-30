@@ -1,5 +1,5 @@
 Attribute VB_Name = "jsonExt"
-' Extension (beta) v0.1.101 for VBA JSON parser, Backus-Naur form JSON parser based on RegEx v1.7.21
+' Extension (beta) v0.1.103 for VBA JSON parser, Backus-Naur form JSON parser based on RegEx v1.7.21
 ' Copyright (C) 2015-2020 omegastripes
 ' omegastripes@yandex.ru
 ' https://github.com/omegastripes/VBA-JSON-parser
@@ -934,7 +934,6 @@ Public Sub getAvg(root, path, avg, sum, qty)
         ' sum - sum of values
         ' qty - amount of processed entities
     
-    avg = Null
     Dim k
     Dim entry
     Dim exists
@@ -979,7 +978,8 @@ Public Sub getMax(root, path, key, ret, qty)
         ' ret - max value
         ' qty - amount of processed entities
     
-    ret = Null
+    Dim res
+    res = Null
     Dim k
     Dim entry
     Dim exists
@@ -992,9 +992,9 @@ Public Sub getMax(root, path, key, ret, qty)
                 If IsNumeric(entry) Then
                     e = CDbl(entry)
                     qty = qty + 1
-                    If ret > e Then
+                    If res > e Then
                     Else
-                        ret = e
+                        res = e
                         key = k
                     End If
                 End If
@@ -1007,14 +1007,17 @@ Public Sub getMax(root, path, key, ret, qty)
                 If IsNumeric(entry) Then
                     e = CDbl(entry)
                     qty = qty + 1
-                    If ret > e Then
+                    If res > e Then
                     Else
-                        ret = e
+                        res = e
                         key = k
                     End If
                 End If
             End If
         Next
+    End If
+    If qty > 0 Then
+        ret = res
     End If
     
 End Sub
@@ -1031,10 +1034,11 @@ Public Sub getMin(root, path, key, ret, qty)
         ' ret - min value
         ' qty - amount of processed entities
     
+    Dim res
+    res = Null
     Dim k
     Dim entry
     Dim exists
-    ret = Null
     Dim e
     qty = 0
     If IsArray(root) Then
@@ -1044,9 +1048,9 @@ Public Sub getMin(root, path, key, ret, qty)
                 If IsNumeric(entry) Then
                     e = CDbl(entry)
                     qty = qty + 1
-                    If ret < e Then
+                    If res < e Then
                     Else
-                        ret = e
+                        res = e
                         key = k
                     End If
                 End If
@@ -1059,14 +1063,17 @@ Public Sub getMin(root, path, key, ret, qty)
                 If IsNumeric(entry) Then
                     e = CDbl(entry)
                     qty = qty + 1
-                    If ret < e Then
+                    If res < e Then
                     Else
-                        ret = e
+                        res = e
                         key = k
                     End If
                 End If
             End If
         Next
+    End If
+    If qty > 0 Then
+        ret = res
     End If
     
 End Sub
@@ -1115,6 +1122,44 @@ Function cloneDictionary(srcDict)
     Set cloneDictionary = destDict
     
 End Function
+
+Sub deepClone(srcElt, destElt)
+    
+    If IsArray(srcElt) Then
+        destElt = srcElt
+        If safeUBound(destElt) > -1 Then
+            Dim i
+            For i = 0 To UBound(destElt)
+                Dim tmp
+                deepClone destElt(i), tmp
+                If IsObject(tmp) Then
+                    Set destElt(i) = tmp
+                Else
+                    destElt(i) = tmp
+                End If
+            Next
+        End If
+    ElseIf IsObject(srcElt) Then
+        If TypeOf srcElt Is Dictionary Then
+            Set destElt = New Dictionary
+            destElt.CompareMode = srcElt.CompareMode
+            Dim key
+            For Each key In srcElt
+                deepClone srcElt(key), tmp
+                If IsObject(tmp) Then
+                    Set destElt(key) = tmp
+                Else
+                    destElt(key) = tmp
+                End If
+            Next
+        Else
+            Set destElt = srcElt
+        End If
+    Else
+        destElt = srcElt
+    End If
+    
+End Sub
 
 Sub pushItem( _
         destArray, _
