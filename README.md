@@ -132,7 +132,7 @@ You can find some <a href="https://stackoverflow.com/search?q=user%3A2165759+is%
 
 Here are some drafts being under development and not fully tested, any bugs detected and suggestions on improvement are welcome in [issues](https://github.com/omegastripes/VBA-JSON-parser/issues).
 
-### Extension
+### Extension <kbd> Beta </kbd>
 
 [jsonExt.bas](https://github.com/omegastripes/VBA-JSON-parser/blob/master/Beta/jsonExt.bas). Some functions available as draft to add flexibility to computations and facilitate processing of JSON structure:
 
@@ -145,11 +145,11 @@ Here are some drafts being under development and not fully tested, any bugs dete
 **joinDicts()** - merging properties from one dictionary to another dictionary.<br>
 **nestedArraysToArray()** - converting nested 1d arrays representing table data with header array into array of dictionaries.<br>
 
-### JSON To XML DOM converter
+### JSON To XML DOM converter <kbd> Beta </kbd>
 
 [JSON2XML.bas](https://github.com/omegastripes/VBA-JSON-parser/blob/master/Beta/JSON2XML.bas). Converting JSON string to XML string and loading it into XML DOM (instead of building a structure of dictionaries and arrays) can significantly increase performance for large data sets. Further XML DOM data processing is not yet covered within current version, and can be implemented via DOM methods and XPath.
 
-### Douglas Crockford json2.js implementation for VBA
+### Douglas Crockford json2.js implementation for VBA <kbd> Beta </kbd>
 
 **jsJsonParser** parser is essential for parsing large amounts of JSON data in VBA, it promplty parses strings up to 10 MB and even larger. This implementation built on [douglascrockford/JSON-js](https://github.com/douglascrockford/JSON-js/blob/master/json2.js), native JS code runs on IE JScript engine hosted by htmlfile ActiveX. Parser is wrapped into class module to make it possible to instantiate htmlfile object and create environment for JS execution in Class_Initialize event prior to parsing methods call.
 
@@ -157,4 +157,4 @@ There are two methods available to parse JSON string: `parseToJs(sample, success
 
 Also you can parse to JS entities first, then make some processing and finally convert to VBA entities by calling `parseToVb , jsJsonData, result, success` for further utilization. JS entities can be serialized to JSON string by `stringify(jsJsonData, spacer)` method, if you need to serialize VBA entities, then use `JSON.Serialize()` function from [JSON.bas module](https://github.com/omegastripes/VBA-JSON-parser/blob/master/JSON.bas). If you don't want to mess with JS entities, simply use `parseToVb sample, , result, success` method. Note that convertion to VBA entities will take extra time.
 
-Some examples are in jsJsonParser_v0.1.1.xlsm of [v1.7.21 release](https://github.com/omegastripes/VBA-JSON-parser/tree/v1.7.21)
+There are few examples in jsJsonParser_v0.1.1.xlsm workbook of the [last release](https://github.com/omegastripes/VBA-JSON-parser/releases/)
