@@ -213,27 +213,27 @@ Public Sub filterElements(root, conditions, inclusive, result, success)
             ' <condition> = Array(<operation>, <expression>, <expression>)
             ' <operation> - string: "=", "<>", ">", ">=", "<", "<="
             ' <expression> - scalar, or nested <condition> evaluated as scalar
-            ' example: Array(">=", ".data.volume", 100) - evaluation is true if .data.volume >= 100
+            ' example: Array(">=", Array("value", ".data.volume"), 100) - evaluation is true if .data.volume >= 100
         ' check if value belongs to interval specified by two values and return result as boolean
             ' <condition> = Array(<operation>, <expression>, <expression>, <expression>)
             ' <operation> - string: "[]", "[)", "(]", "()"
             ' square brackets mean the end point is included, round parentheses mean it's excluded
             ' <expression> - scalar, or nested <condition> evaluated as scalar
-            ' example: Array("[]", ".", 0, 100) - evaluation is true if element value itself >= 0 and <= 100
+            ' example: Array("[]", Array("value", "."), 0, 100) - evaluation is true if element value itself >= 0 and <= 100
         ' boolean unary
             ' <condition> = Array("not", <expression>)
             ' <expression> - boolean, or nested <condition> evaluated as boolean
-            ' example: Array("not", Array("[]", ".", 0, 100)) - evaluation is true if element value itself < 0 or > 100
+            ' example: Array("not", Array("[]", Array("value", "."), 0, 100)) - evaluation is true if element value itself < 0 or > 100
             ' "not" operation can be concatenated with any other operation which returns boolean
             ' examples:
             ' Array("not exists", ".items[0].restrictions")
-            ' Array("not >=", ".data.volume", 100)
-            ' Array("not ()", ".", 0, 100)
+            ' Array("not >=", Array("value", ".data.volume"), 100)
+            ' Array("not ()", Array("value", "."), 0, 100)
         ' boolean binary
             ' <condition> = Array(<operation>, <expression>, <expression>)
             ' <operation> - string: "or", "and", "xor"
             ' <expression> - boolean, or nested <condition> evaluated as boolean
-            ' example: Array("and", Array("[]", ".volume", 0, 100), Array(">", ".height", 50))
+            ' example: Array("and", Array("[]", Array("value", ".volume"), 0, 100), Array(">", Array("value", ".height"), 50))
             ' "or", "and" operations actually accept > 2 arguments, "or" provides lazy evaluation
             ' <condition> = Array(<operation>, <expression>, <expression>, ...)
             ' example:
@@ -267,7 +267,6 @@ Public Sub filterElements(root, conditions, inclusive, result, success)
             '           10
             '       ]
             '   ]
-    
     Dim data
     Dim k
     Dim ret
