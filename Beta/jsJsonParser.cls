@@ -8,11 +8,11 @@ Attribute VB_Creatable = False
 Attribute VB_PredeclaredId = False
 Attribute VB_Exposed = False
 ' Douglas Crockford json2.js implementation for VBA
-' version 2020-06-19
+' version 2021-01-01
 ' https://github.com/douglascrockford/JSON-js/blob/master/json2.js
 '
-' jsJsonParser (beta) v0.1.1
-' Copyright (C) 2020 omegastripes
+' jsJsonParser (beta) v0.1.2
+' Copyright (C) 2021 omegastripes
 ' omegastripes@yandex.ru
 ' https://github.com/omegastripes/VBA-JSON-parser
 '
@@ -40,6 +40,7 @@ Private copyDict As Object
 Private Sub Class_Initialize()
     
     Set document = CreateObject("htmlfile")
+    document.Write "<meta http-equiv=""x-ua-compatible"" content=""IE=9"" />'"
     With document.parentWindow
         .execScript jsCode()
         Set jsonParser = .JSON
