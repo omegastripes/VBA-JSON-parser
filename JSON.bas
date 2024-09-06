@@ -1,6 +1,6 @@
 Attribute VB_Name = "JSON"
-' VBA JSON parser, Backus-Naur form JSON parser based on RegEx v1.7.21
-' Copyright (C) 2015-2020 omegastripes
+' VBA JSON parser, Backus-Naur form JSON parser based on RegEx v1.7.22
+' Copyright (C) 2015-2024 omegastripes
 ' omegastripes@yandex.ru
 ' https://github.com/omegastripes/VBA-JSON-parser
 '
@@ -71,7 +71,7 @@ Sub Parse(ByVal sSample As String, vJSON As Variant, sState As String)
         Loop While bMatch
         .Pattern = "^<\d+[oa]>$" ' Top level object structure, unspecified array accepted
         If .Test(sBuffer) And oTokens.Exists(sBuffer) Then
-            sDelim = Mid(1 / 2, 2, 1)
+            sDelim = Left(Right(1 / 2, 2), 1)
             Retrieve sBuffer, vJSON
             sState = IIf(IsObject(vJSON), "Object", "Array")
         Else
