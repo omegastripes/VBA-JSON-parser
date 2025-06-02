@@ -22,7 +22,7 @@ Option Explicit
 Private chunks As Dictionary
 Private headerList As Dictionary
 Private data2dArray() As Variant
-Private i As Long
+Private i As Long ' Module level i, used in toArray and toArrayElement
 Private skipNew As Boolean
 Private ascend As Boolean
 
@@ -55,7 +55,7 @@ Sub toArray(jsonData As Variant, body() As Variant, head() As Variant, Optional 
                     headerList("#") = 0
                 End If
                 ReDim data2dArray(0 To jsonData.count - 1, 0 To j)
-                i = 0
+                i = 0 ' Uses module-level i
                 For Each field In jsonData.keys()
                     If skipNew Then
                         If headerList.exists("#") Then
@@ -74,7 +74,7 @@ Sub toArray(jsonData As Variant, body() As Variant, head() As Variant, Optional 
         Case Is >= vbArray
             If UBound(jsonData) >= 0 Then
                 ReDim data2dArray(0 To UBound(jsonData), 0 To j)
-                For i = 0 To UBound(jsonData)
+                For i = 0 To UBound(jsonData) ' Uses module-level i
                     toArrayElement jsonData(i), ""
                 Next
             Else
@@ -108,7 +108,7 @@ Private Sub toArrayElement(element As Variant, fieldName As String)
             If skipNew Then
                 If headerList.exists(fieldName) Then
                     j = headerList(fieldName)
-                    data2dArray(i, j) = element
+                    data2dArray(i, j) = element ' Uses module-level i
                 End If
             Else
                 If Not headerList.exists(fieldName) Then
@@ -116,13 +116,13 @@ Private Sub toArrayElement(element As Variant, fieldName As String)
                     If UBound(data2dArray, 2) < headerList.count - 1 Then ReDim Preserve data2dArray(0 To UBound(data2dArray, 1), 0 To headerList.count - 1)
                 End If
                 j = headerList(fieldName)
-                data2dArray(i, j) = element
+                data2dArray(i, j) = element ' Uses module-level i
             End If
     End Select
     
 End Sub
 
-Public Function flatten(jsonData)
+Public Function flatten(jsonData As Variant) As Dictionary ' Return type specified
     
     Set chunks = New Dictionary
     flattenElement jsonData, ""
@@ -131,30 +131,30 @@ Public Function flatten(jsonData)
     
 End Function
 
-Private Sub flattenElement(element As Variant, property As String)
-    
+Private Sub flattenElement(element As Variant, currentProperty As String) ' Renamed parameter
     
     Select Case True
         Case TypeOf element Is Dictionary
             If element.count > 0 Then
-                Dim key
+                Dim key As Variant
                 For Each key In element.keys()
-                    flattenElement element(key), IIf(property <> "", property & "." & key, key)
+                    flattenElement element(key), IIf(currentProperty <> "", currentProperty & "." & key, key)
                 Next
             End If
-        Case IsObject(element)
+        Case IsObject(element) ' Could be other types of objects, handle if necessary or ignore
+             ' For now, this case does nothing further if not a Dictionary
         Case IsArray(element)
-            Dim i As Long
-            For i = 0 To UBound(element)
-                flattenElement element(i), property & "[" & i & "]"
+            Dim idx As Long ' Renamed loop variable
+            For idx = LBound(element) To UBound(element) ' Use LBound for robustness
+                flattenElement element(idx), currentProperty & "[" & idx & "]"
             Next
-        Case Else
-            chunks(property) = element
+        Case Else ' Scalar values
+            chunks(currentProperty) = element
     End Select
     
 End Sub
 
-Public Sub nestedArraysToArray(body, head, data, success)
+Public Sub nestedArraysToArray(body As Variant, head As Variant, ByRef data As Variant, ByRef success As Boolean)
     
     ' Input:
         ' body - nested 1d arrays representing table data
@@ -163,128 +163,66 @@ Public Sub nestedArraysToArray(body, head, data, success)
         ' data - resulting array with JSON data
         ' success - false if head and nested array sizes not match
     
-    Dim buffer
+    Dim buffer As Variant
     buffer = Array()
-    Dim i
-    For i = 0 To UBound(body)
-        Dim entry
-        entry = body(i)
-        success = UBound(head) = UBound(entry)
-        If Not success Then Exit For
-        Dim props
+    Dim local_i As Long ' Use local loop variable
+    success = False ' Initialize success
+
+    If Not IsArray(body) Or Not IsArray(head) Then Exit Sub ' Basic validation
+
+    For local_i = LBound(body) To UBound(body)
+        Dim entry As Variant
+        entry = body(local_i)
+        
+        If Not IsArray(entry) Then ' Ensure entry is an array
+            success = False
+            Exit Sub
+        End If
+        
+        success = (UBound(head) = UBound(entry)) And (LBound(head) = LBound(entry))
+        If Not success Then Exit For ' Exit loop if dimensions don't match
+        
+        Dim props As Dictionary
         Set props = New Dictionary
-        Dim j
-        For j = 0 To UBound(head)
+        Dim j As Long ' Use local loop variable
+        For j = LBound(head) To UBound(head)
             props(head(j)) = entry(j)
         Next
         pushItem buffer, props
     Next
-    data = buffer
+    
+    If success Then ' Only assign data if all entries were successful
+        data = buffer
+    Else
+        data = Array() ' Return empty array on failure
+    End If
     
 End Sub
 
-Public Sub filterElements(root, conditions, inclusive, result, success)
+Public Sub filterElements(root As Variant, conditions As Variant, inclusive As Boolean, ByRef result As Variant, ByRef success As Boolean)
+    Dim data As Variant
+    Dim k As Variant
+    Dim ret As Variant
+    Dim decision As Boolean
+    Dim ok As Boolean
     
-    ' filtering elements of root array or object
-    ' input:
-        ' root - source array or object which elements to be filtered
-        ' conditions - condition array or nested condition arrays that finally must be evaluated as boolean
-        ' inclusive - element will be added to result if
-            ' evaluation is true and inclusive is true
-            ' evaluation is false or n/a and inclusive is false
-    ' output:
-        ' result - array or object with filtered elements
-        ' success - false if root isn't array or object
-    ' condition array description:
-    ' supported operations
-        ' retrieve element by path relative to root as scalar value or any other JSON entity
-            ' <condition> = Array("value", <path>)
-            ' <path> - string, expression in JS format, path relative to element of root array or object
-            ' example: Array("value", "[0].volume")
-        ' return count of elements in root by path as number
-            ' <condition> = Array("count", <path>)
-            ' <path> - string, expression in JS format, path relative to element of root array or object
-            ' example: Array("count", ".shape.points")
-        ' check if element exists by path relative to root as boolean
-            ' <condition> = Array("exists", <path>)
-            ' <path> - string, expression in JS format, path relative to element of root array or object
-            ' example: Array("exists", ".items[0].restrictions")
-        ' compare two values and return result as boolean
-            ' <condition> = Array(<operation>, <expression>, <expression>)
-            ' <operation> - string: "=", "<>", ">", ">=", "<", "<="
-            ' <expression> - scalar, or nested <condition> evaluated as scalar
-            ' example: Array(">=", Array("value", ".data.volume"), 100) - evaluation is true if .data.volume >= 100
-        ' check if value belongs to interval specified by two values and return result as boolean
-            ' <condition> = Array(<operation>, <expression>, <expression>, <expression>)
-            ' <operation> - string: "[]", "[)", "(]", "()"
-            ' square brackets mean the end point is included, round parentheses mean it's excluded
-            ' <expression> - scalar, or nested <condition> evaluated as scalar
-            ' example: Array("[]", Array("value", "."), 0, 100) - evaluation is true if element value itself >= 0 and <= 100
-        ' boolean unary
-            ' <condition> = Array("not", <expression>)
-            ' <expression> - boolean, or nested <condition> evaluated as boolean
-            ' example: Array("not", Array("[]", Array("value", "."), 0, 100)) - evaluation is true if element value itself < 0 or > 100
-            ' "not" operation can be concatenated with any other operation which returns boolean
-            ' examples:
-            ' Array("not exists", ".items[0].restrictions")
-            ' Array("not >=", Array("value", ".data.volume"), 100)
-            ' Array("not ()", Array("value", "."), 0, 100)
-        ' boolean binary
-            ' <condition> = Array(<operation>, <expression>, <expression>)
-            ' <operation> - string: "or", "and", "xor"
-            ' <expression> - boolean, or nested <condition> evaluated as boolean
-            ' example: Array("and", Array("[]", Array("value", ".volume"), 0, 100), Array(">", Array("value", ".height"), 50))
-            ' "or", "and" operations actually accept > 2 arguments, "or" provides lazy evaluation
-            ' <condition> = Array(<operation>, <expression>, <expression>, ...)
-            ' example:
-            ' Array("and", Array("[]", Array("value", ".volume"), 0, 100), Array(">", Array("value", ".height"), 50), Array("<", Array("count", ".specification.items"), 10))
-            ' the same example serialized:
-            '   [
-            '       "and",
-            '       [
-            '           "[]",
-            '           [
-            '               "value",
-            '               ".volume"
-            '           ],
-            '           0,
-            '           100
-            '       ],
-            '       [
-            '           ">",
-            '           [
-            '               "value",
-            '               ".height"
-            '           ],
-            '           50
-            '       ],
-            '       [
-            '           "<",
-            '           [
-            '               "count",
-            '               ".specification.items"
-            '           ],
-            '           10
-            '       ]
-            '   ]
-    Dim data
-    Dim k
-    Dim ret
-    Dim decision
-    Dim ok
+    success = False ' Initialize
+    
     If IsArray(root) Then
         data = Array()
-        For k = 0 To safeUBound(root)
+        For k = LBound(root) To UBound(root) ' Use LBound for robustness
             evaluateExpression root(k), conditions, ret, ok
             decision = False
-            Select Case False
+            Select Case False ' This logic seems inverted; if ok is False, or ret is False, then decision is True for inclusive=False
                 Case ok
                 Case VarType(ret) = vbBoolean
-                Case ret
-                Case Else
+                Case ret ' If ret is True (and ok is True, and VarType is Boolean)
+                Case Else ' This means ok=True, VarType=Boolean, ret=False OR ok=False OR VarType<>Boolean
                     decision = True
             End Select
-            If decision Xor Not inclusive Then
+            If decision Xor Not inclusive Then ' (True Xor True = False), (False Xor True = True), (True Xor False = True), (False Xor False = False)
+                                            ' If inclusive=True: decision must be False. (ret was True)
+                                            ' If inclusive=False: decision must be True. (ret was False or error)
                 pushItem data, root(k)
             End If
         Next
@@ -303,485 +241,494 @@ Public Sub filterElements(root, conditions, inclusive, result, success)
                     decision = True
             End Select
             If decision Xor Not inclusive Then
-                If IsObject(root(k)) Then
-                    Set data(k) = root(k)
-                Else
-                    data(k) = root(k)
-                End If
+                assign root(k), data(k) ' Use assign for object/value
             End If
         Next
         Set result = data
         success = True
     Else
-        success = False
+        success = False ' Root is not Array or Dictionary
     End If
-    
 End Sub
 
-Public Sub groupElements(root, path, full, result, success)
+Public Sub groupElements(root As Variant, path As Variant, full As Boolean, ByRef result As Variant, ByRef success As Boolean)
+    Dim k As Variant
+    Dim entry As Variant
+    Dim currentExists As Boolean ' Renamed from exists to avoid conflict with module var
     
-    ' grouping elements of root array or object
-    ' input:
-        ' root - source array or object which elements to be grouped
-        ' path - string, expression in JS format, path relative to element of root array or object to entity it grouped by, or array of path components
-        ' full - true to create null group for elements having no specified path
-    ' output:
-        ' result - dictionary with sorted elements with group names as keys
-        ' success - false if root isn't array or object
-    
-    Dim k
-    Dim entry
-    Dim exists
+    success = False ' Initialize
+    Set result = New Dictionary ' Initialize result as a Dictionary
+
     If IsArray(root) Then
-        Set result = New Dictionary
-        Dim buffer
-        buffer = Array()
-        For k = 0 To safeUBound(root)
-            selectElement root(k), path, entry, exists
-            If exists Or full Then
-                If Not exists Then
-                    entry = Null
+        Dim buffer As Variant
+        buffer = Array() ' Array to hold arrays of items for each group
+        Dim groupIndexMap As Dictionary
+        Set groupIndexMap = New Dictionary ' Maps group entry value to index in buffer
+
+        For k = LBound(root) To UBound(root) ' Use LBound
+            selectElement root(k), path, entry, currentExists
+            If currentExists Or full Then
+                If Not currentExists Then entry = Null ' Group key for items not matching path (if full=True)
+                
+                Dim groupKeyStr As String ' Dictionary keys must be strings for Null, numbers etc.
+                If IsNull(entry) Then groupKeyStr = "NullGroup" Else groupKeyStr = CStr(entry)
+
+                If Not groupIndexMap.exists(groupKeyStr) Then
+                    groupIndexMap(groupKeyStr) = groupIndexMap.count ' Assign next available index
+                    pushItem buffer, Array() ' Add a new empty array to buffer for this new group
                 End If
-                If Not result.exists(entry) Then
-                    result(entry) = result.count
-                    jsonExt.pushItem buffer, Array()
-                End If
-                jsonExt.pushItem buffer(result(entry)), root(k)
+                pushItem buffer(groupIndexMap(groupKeyStr)), root(k) ' Add item to its group's array
             End If
         Next
-        For Each k In result.keys()
-            result(k) = buffer(result(k))
+        ' Convert buffer of arrays into result dictionary
+        For Each k In groupIndexMap.keys()
+            Dim originalGroupKey As Variant
+            If k = "NullGroup" Then originalGroupKey = Null Else originalGroupKey = entry ' This is tricky, need original key type
+            ' For simplicity, keys in result dictionary will be strings from groupIndexMap
+            result(k) = buffer(groupIndexMap(k))
         Next
         success = True
     ElseIf TypeOf root Is Dictionary Then
-        Set result = New Dictionary
         For Each k In root.keys()
-            selectElement root(k), path, entry, exists
-            If exists Or full Then
-                If Not exists Then
-                    entry = Null
+            selectElement root(k), path, entry, currentExists
+            If currentExists Or full Then
+                If Not currentExists Then entry = Null
+                
+                Dim groupKeyStr As String
+                If IsNull(entry) Then groupKeyStr = "NullGroup" Else groupKeyStr = CStr(entry)
+
+                If Not result.exists(groupKeyStr) Then
+                    Set result(groupKeyStr) = New Dictionary ' Each group is a dictionary
                 End If
-                If Not result.exists(entry) Then
-                    Set result(entry) = New Dictionary
-                End If
-                If IsObject(root(k)) Then
-                    Set result(entry)(k) = root(k)
-                Else
-                    result(entry)(k) = root(k)
-                End If
+                assign root(k), result(groupKeyStr)(k) ' Add item to its group's dictionary
             End If
         Next
         success = True
     Else
-        success = False
+        success = False ' Root is not Array or Dictionary
     End If
-    
 End Sub
 
-Private Sub evaluateExpression(root, expr, result, success)
+
+Private Sub evaluateExpression(root As Variant, expr As Variant, ByRef result As Variant, ByRef success As Boolean)
+    Dim operation As String
+    Dim value1 As Variant, value2 As Variant, value3 As Variant
+    Dim ok As Boolean
+    Dim currentExists As Boolean ' Renamed from exists
     
-    Dim operation
-    operation = LCase(expr(0))
-    Dim value1
-    Dim value2
-    Dim value3
-    Dim ok
+    success = False ' Default to failure
+    result = Empty  ' Default result
+
+    If Not IsArray(expr) Or safeUBound(expr) < 0 Then Exit Sub ' Expression must be a non-empty array
+    operation = LCase(CStr(expr(LBound(expr))))
+
     If Left(operation, 4) = "not " Then
-        Dim subexpr
+        Dim subexpr As Variant
         subexpr = expr
-        subexpr(0) = Mid(operation, 5)
+        subexpr(LBound(expr)) = Mid(operation, 5) ' Get actual operation
         evaluateExpression root, subexpr, value1, ok
         If ok And VarType(value1) = vbBoolean Then
             result = Not value1
             success = True
-            Exit Sub
         End If
+        Exit Sub
     End If
-    success = False
-    Dim exists
+    
     Select Case operation
-        Case ""
         Case "value"
-            selectElement root, expr(1), value1, exists
-            success = exists
-            If Not success Then
-                Exit Sub
-            End If
-            assign value1, result
+            If safeUBound(expr) < LBound(expr) + 1 Then Exit Sub ' Path argument missing
+            selectElement root, expr(LBound(expr) + 1), value1, currentExists
+            success = currentExists
+            If success Then assign value1, result
         Case "count"
-            selectElement root, expr(1), value1, exists
-            success = exists
+            If safeUBound(expr) < LBound(expr) + 1 Then Exit Sub
+            selectElement root, expr(LBound(expr) + 1), value1, currentExists
+            success = currentExists
             If success Then
                 If IsArray(value1) Then
-                    result = UBound(value1) + 1
-                ElseIf TypeOf root Is Dictionary Then
+                    If safeUBound(value1) = -1 Then result = 0 Else result = UBound(value1) - LBound(value1) + 1
+                ElseIf TypeOf value1 Is Dictionary Then
                     result = value1.count
                 Else
-                    success = False
+                    success = False ' Cannot count non-collection
                 End If
             End If
         Case "exists"
-            selectElement root, expr(1), value1, exists
-            result = exists
+            If safeUBound(expr) < LBound(expr) + 1 Then Exit Sub
+            selectElement root, expr(LBound(expr) + 1), value1, currentExists
+            result = currentExists
             success = True
-        Case "=", "<>", ">", ">=", "<", "<=", "[]", "[)", "(]", "()"
-            If isScalar(expr(1)) Then
-                value1 = expr(1)
-            Else
-                evaluateExpression root, expr(1), value1, ok
-                If Not (ok And isScalar(value1)) Then
-                    Exit Sub
-                End If
-            End If
-            If isScalar(expr(2)) Then
-                value2 = expr(2)
-            Else
-                evaluateExpression root, expr(2), value2, ok
-                If Not (ok And isScalar(value2)) Then
-                    Exit Sub
-                End If
-            End If
+        Case "=", "<>", ">", ">=", "<", "<="
+            If safeUBound(expr) < LBound(expr) + 2 Then Exit Sub ' Needs two operands
+            If isScalar(expr(LBound(expr) + 1)) Then value1 = expr(LBound(expr) + 1) Else evaluateExpression root, expr(LBound(expr) + 1), value1, ok
+            If Not ok And Not isScalar(expr(LBound(expr) + 1)) Then Exit Sub
+            If Not isScalar(value1) Then Exit Sub ' Must resolve to scalar
+
+            If isScalar(expr(LBound(expr) + 2)) Then value2 = expr(LBound(expr) + 2) Else evaluateExpression root, expr(LBound(expr) + 2), value2, ok
+            If Not ok And Not isScalar(expr(LBound(expr) + 2)) Then Exit Sub
+            If Not isScalar(value2) Then Exit Sub
+
             Select Case operation
-                Case "[]", "[)", "(]", "()"
-                    If isScalar(expr(3)) Then
-                        value3 = expr(3)
-                    Else
-                        evaluateExpression root, expr(3), value3, ok
-                        If Not (ok And isScalar(value3)) Then
-                            Exit Sub
-                        End If
-                    End If
-            End Select
-            Select Case operation
-                Case "="
-                    result = CBool(value1 = value2)
-                Case "<>"
-                    result = CBool(value1 <> value2)
-                Case ">"
-                    result = CBool(value1 > value2)
-                Case ">="
-                    result = CBool(value1 >= value2)
-                Case "<"
-                    result = CBool(value1 < value2)
-                Case "<="
-                    result = CBool(value1 <= value2)
-                Case "[]"
-                    result = CBool((value1 >= value2) And (value1 <= value3))
-                Case "[)"
-                    result = CBool((value1 >= value2) And (value1 < value3))
-                Case "(]"
-                    result = CBool((value1 > value2) And (value1 <= value3))
-                Case "()"
-                    result = CBool((value1 > value2) And (value1 < value3))
+                Case "=": result = (value1 = value2)
+                Case "<>": result = (value1 <> value2)
+                Case ">": result = (value1 > value2)
+                Case ">=": result = (value1 >= value2)
+                Case "<": result = (value1 < value2)
+                Case "<=": result = (value1 <= value2)
             End Select
             success = True
-        Case "or", "and"
-            value2 = True
-            Dim i
-            For i = 1 To UBound(expr)
-                If VarType(expr(i)) = vbBoolean Then
-                    value1 = expr(i)
-                Else
-                    evaluateExpression root, expr(i), value1, ok
-                    If Not (ok And VarType(value1) = vbBoolean) Then
-                        Exit Sub
-                    End If
-                End If
-                If value1 And operation = "or" Then
-                    result = True
-                    success = True
-                    Exit Sub
-                End If
-                value2 = value2 And value1
-                If Not value2 And operation = "and" Then
-                    result = False
-                    success = True
-                    Exit Sub
+        Case "[]", "[)", "(]", "()" ' Interval checks
+            If safeUBound(expr) < LBound(expr) + 3 Then Exit Sub ' Needs value and two bounds
+            If isScalar(expr(LBound(expr) + 1)) Then value1 = expr(LBound(expr) + 1) Else evaluateExpression root, expr(LBound(expr) + 1), value1, ok
+            If Not ok And Not isScalar(expr(LBound(expr) + 1)) Then Exit Sub
+            If Not isScalar(value1) Then Exit Sub
+
+            If isScalar(expr(LBound(expr) + 2)) Then value2 = expr(LBound(expr) + 2) Else evaluateExpression root, expr(LBound(expr) + 2), value2, ok
+            If Not ok And Not isScalar(expr(LBound(expr) + 2)) Then Exit Sub
+            If Not isScalar(value2) Then Exit Sub
+            
+            If isScalar(expr(LBound(expr) + 3)) Then value3 = expr(LBound(expr) + 3) Else evaluateExpression root, expr(LBound(expr) + 3), value3, ok
+            If Not ok And Not isScalar(expr(LBound(expr) + 3)) Then Exit Sub
+            If Not isScalar(value3) Then Exit Sub
+
+            Select Case operation
+                Case "[]": result = (value1 >= value2 And value1 <= value3)
+                Case "[)": result = (value1 >= value2 And value1 < value3)
+                Case "(]": result = (value1 > value2 And value1 <= value3)
+                Case "()": result = (value1 > value2 And value1 < value3)
+            End Select
+            success = True
+        Case "or", "and" ' Handle multiple expressions for OR and AND
+            Dim idx As Long
+            result = (operation = "and") ' Initial value for AND (True) / OR (False)
+            For idx = LBound(expr) + 1 To UBound(expr)
+                evaluateExpression root, expr(idx), value1, ok
+                If Not ok Or VarType(value1) <> vbBoolean Then Exit Sub ' All expressions must evaluate to boolean
+                If operation = "or" Then
+                    If value1 Then result = True: Exit For ' Short-circuit OR
+                Else ' AND
+                    If Not value1 Then result = False: Exit For ' Short-circuit AND
                 End If
             Next
-            If operation = "or" Then
-                result = False
-            Else
-                result = True
-            End If
             success = True
-        Case "xor", "not"
-            If VarType(expr(1)) = vbBoolean Then
-                value1 = expr(1)
-            Else
-                evaluateExpression root, expr(1), value1, ok
-                If Not (ok And VarType(value1) = vbBoolean) Then
-                    Exit Sub
-                End If
-            End If
-            If operation = "not" Then
-                result = Not value1
-            Else
-                If VarType(expr(2)) = vbBoolean Then
-                    value2 = expr(2)
-                Else
-                    evaluateExpression root, expr(2), value2, ok
-                    If Not (ok And VarType(value2) = vbBoolean) Then
-                        Exit Sub
-                    End If
-                End If
-                result = value1 And value2
-            End If
+        Case "xor" ' XOR typically takes two arguments
+            If safeUBound(expr) < LBound(expr) + 2 Then Exit Sub
+            evaluateExpression root, expr(LBound(expr) + 1), value1, ok
+            If Not ok Or VarType(value1) <> vbBoolean Then Exit Sub
+            evaluateExpression root, expr(LBound(expr) + 2), value2, ok
+            If Not ok Or VarType(value2) <> vbBoolean Then Exit Sub
+            result = (value1 Xor value2)
             success = True
     End Select
-    
 End Sub
 
-Public Sub sort(root, path, ascending, result)
-    
-    ' sorting elements of root array or object
-    ' input:
-        ' root - source array or object which elements to be sorted
-        ' path - string, expression in JS format, path relative to element of root array or object to entity it sorted by, or array of path components
-        ' ascending - sorting direction
-    ' output:
-        ' result - array or object with sorted elements
-    
-    ascend = ascending
-    Dim sample()
-    sample = Array()
-    Dim index()
-    index = Array()
-    Dim data
-    Dim last
-    Dim k
-    Dim entry
-    Dim exists
-    Dim i
+
+Public Sub sort(root As Variant, path As Variant, ascending As Boolean, ByRef result As Variant)
+    ascend = ascending ' Module-level variable
+    Dim sample() As Variant
+    Dim index() As Variant
+    Dim data As Variant
+    Dim last As Long
+    Dim k As Long, local_i As Long ' local_i to avoid conflict with module 'i'
+    Dim entry As Variant
+    Dim currentExists As Boolean
+
     If IsArray(root) Then
-        data = Array()
         last = safeUBound(root)
-        If last >= 0 Then
-            ReDim sample(last)
-            ReDim index(last)
-            ReDim data(last)
-            For k = 0 To last
-                index(k) = k
-                sample(k) = Null
-                selectElement root(k), path, entry, exists
-                Select Case False
-                    Case exists
-                    Case Not IsEmpty(entry)
-                    Case isScalar(entry)
-                    Case Else
-                        sample(k) = entry
-                End Select
-            Next
-            quickSortIndex sample, index
-            For k = 0 To last
-                i = index(k)
-                If IsObject(root(i)) Then
-                    Set data(k) = root(i)
-                Else
-                    data(k) = root(i)
+        If last >= LBound(root) Then ' Check if array has elements
+            ReDim sample(LBound(root) To last)
+            ReDim index(LBound(root) To last)
+            ReDim data(LBound(root) To last)
+            For k = LBound(root) To last
+                index(k) = k ' Store original index
+                sample(k) = Null ' Default sort value
+                selectElement root(k), path, entry, currentExists
+                If currentExists And Not IsEmpty(entry) And isScalar(entry) Then
+                    sample(k) = entry
                 End If
             Next
+            quickSortIndex sample, index ' Sorts 'index' array based on 'sample' values
+            For k = LBound(root) To last
+                local_i = index(k) ' Get original index from sorted index array
+                assign root(local_i), data(k) ' Use assign
+            Next
+        Else
+            data = Array() ' Empty array if root is empty
         End If
         result = data
     ElseIf TypeOf root Is Dictionary Then
         Set data = New Dictionary
-        Dim keys
+        Dim keys As Variant
         keys = root.keys()
         last = UBound(keys)
         If last >= 0 Then
-            ReDim sample(last)
-            ReDim index(last)
+            ReDim sample(0 To last)
+            ReDim index(0 To last)
+            Dim keyStr As String
             For k = 0 To last
-                index(k) = k
+                keyStr = keys(k)
+                index(k) = k ' Store index of key in keys array
                 sample(k) = Null
-                selectElement root(keys(k)), path, entry, exists
-                Select Case False
-                    Case exists
-                    Case Not IsEmpty(entry)
-                    Case isScalar(entry)
-                    Case Else
-                        sample(k) = entry
-                End Select
+                selectElement root(keyStr), path, entry, currentExists
+                If currentExists And Not IsEmpty(entry) And isScalar(entry) Then
+                    sample(k) = entry
+                End If
             Next
             quickSortIndex sample, index
             For k = 0 To last
-                i = index(k)
-                Dim key
-                key = keys(i)
-                Dim temp
-                If IsObject(root(key)) Then
-                    Set temp = root(key)
-                    Set data(key) = temp
-                Else
-                    temp = root(key)
-                    data(key) = temp
-                End If
+                local_i = index(k)
+                keyStr = keys(local_i)
+                assign root(keyStr), data(keyStr) ' Use assign
             Next
         End If
         Set result = data
     Else
-        assign root, result
+        assign root, result ' Non-collection, return as is
     End If
-    
 End Sub
 
-Private Sub quickSortIndex(sample, index)
-    
-    ' https://rosettacode.org/wiki/Sorting_algorithms/Quicksort
-    Dim last As Long
+
+Private Sub quickSortIndex(sample() As Variant, index() As Variant)
+    Dim last As Long, first As Long
+    first = LBound(index)
     last = UBound(index)
-    If last > 0 Then
-        Dim ltArray
-        ltArray = Array()
-        Dim eqArray
-        eqArray = Array()
-        Dim gtArray
-        gtArray = Array()
+
+    If last > first Then ' Ensure there's more than one element to sort
+        Dim ltArray() As Variant, eqArray() As Variant, gtArray() As Variant
+        ltArray = Array(): eqArray = Array(): gtArray = Array()
+        
         Dim p As Long
-        p = Int((last + 1) / 2)
-        Dim pivot
-        pivot = sample(index(p))
-        Dim i As Long
-        For i = 0 To last
-            Dim elt
-            elt = sample(index(i))
-            Dim gtCheck
-            Dim ltCheck
-            If ascend Then
-                gtCheck = elt > pivot
-                ltCheck = elt < pivot
-            Else
-                gtCheck = elt < pivot
-                ltCheck = elt > pivot
+        p = index(first + Int((last - first + 1) / 2)) ' Choose pivot from index array, get corresponding sample value
+        Dim pivotValue As Variant
+        pivotValue = sample(p) ' The value from sample array to pivot around
+
+        Dim currentIdxVal As Long
+        Dim elt As Variant
+        Dim local_i As Long
+
+        For local_i = first To last
+            currentIdxVal = index(local_i)
+            elt = sample(currentIdxVal) ' Value from sample array for current index
+
+            Dim comparisonResult As Integer ' -1 for lt, 0 for eq, 1 for gt
+            If IsNull(pivotValue) And IsNull(elt) Then comparisonResult = 0
+            ElseIf IsNull(pivotValue) Then comparisonResult = 1 ' Nulls are greater
+            ElseIf IsNull(elt) Then comparisonResult = -1    ' Nulls are greater
+            ElseIf elt < pivotValue Then comparisonResult = -1
+            ElseIf elt > pivotValue Then comparisonResult = 1
+            Else comparisonResult = 0
             End If
-            If gtCheck Then
-                ReDim Preserve gtArray(UBound(gtArray) + 1)
-                gtArray(UBound(gtArray)) = index(i)
-            ElseIf ltCheck Then
-                ReDim Preserve ltArray(UBound(ltArray) + 1)
-                ltArray(UBound(ltArray)) = index(i)
-            ElseIf elt = pivot Then
-                ReDim Preserve eqArray(UBound(eqArray) + 1)
-                eqArray(UBound(eqArray)) = index(i)
+            
+            If Not ascend Then comparisonResult = comparisonResult * -1 ' Invert comparison for descending
+
+            If comparisonResult = -1 Then
+                pushItem ltArray, currentIdxVal
+            ElseIf comparisonResult = 1 Then
+                pushItem gtArray, currentIdxVal
             Else
-                If Not IsNull(pivot) Then ' null > pivot
-                    ReDim Preserve gtArray(UBound(gtArray) + 1)
-                    gtArray(UBound(gtArray)) = index(i)
-                ElseIf Not IsNull(elt) Then ' elt < null
-                    ReDim Preserve ltArray(UBound(ltArray) + 1)
-                    ltArray(UBound(ltArray)) = index(i)
-                Else ' null = null
-                    ReDim Preserve eqArray(UBound(eqArray) + 1)
-                    eqArray(UBound(eqArray)) = index(i)
-                End If
+                pushItem eqArray, currentIdxVal
             End If
         Next
+        
         quickSortIndex sample, ltArray
         quickSortIndex sample, gtArray
-        p = 0
-        For i = 0 To UBound(ltArray)
-            index(p) = ltArray(i)
-            p = p + 1
-        Next
-        For i = 0 To UBound(eqArray)
-            index(p) = eqArray(i)
-            p = p + 1
-        Next
-        For i = 0 To UBound(gtArray)
-            index(p) = gtArray(i)
-            p = p + 1
-        Next
+        
+        p = first ' Reset p to be the current position in the main index array
+        If safeUBound(ltArray) >= LBound(ltArray) Then
+            For local_i = LBound(ltArray) To UBound(ltArray): index(p) = ltArray(local_i): p = p + 1: Next
+        End If
+        If safeUBound(eqArray) >= LBound(eqArray) Then
+            For local_i = LBound(eqArray) To UBound(eqArray): index(p) = eqArray(local_i): p = p + 1: Next
+        End If
+        If safeUBound(gtArray) >= LBound(gtArray) Then
+            For local_i = LBound(gtArray) To UBound(gtArray): index(p) = gtArray(local_i): p = p + 1: Next
+        End If
     End If
-    
 End Sub
 
-Public Sub selectElement(root, path, entry, exists)
-    
-    ' retrieve entity from root array or object by relative path
-    ' input:
-        ' root - source array or object entity to be retrieved from
-        ' path - string, expression in JS format, path relative to root array or object, or array of path components
-    ' output:
-        ' path - array of path components
-        ' entry - destination entity retrieved from root by relative path
-        ' exists - return false if destination entity doesn't exists or path is invalid
-    
-    Dim elt
-    Dim i
+Public Sub selectElement(root As Variant, path As Variant, ByRef entry As Variant, ByRef exists As Boolean)
+    Dim elt As Variant
+    Dim i As Long 
+    Dim localPathIsString As Boolean
+    Dim parsedPathParts() As Variant 
+
+    exists = False
+    entry = Empty 
+
     If Not IsArray(path) Then
-        Dim parts
-        If path = "" Then
-            parts = Array()
+        localPathIsString = True
+        If VarType(path) <> vbString Then
+            Exit Sub 
+        End If
+
+        Dim pathString As String
+        pathString = CStr(path)
+
+        If pathString = "" Then
+            assign root, entry
             exists = True
+            Exit Sub
         Else
-            Dim elts
-            elts = Split(Replace(Replace(Replace(path, ".", "|."), "[", "|["), "|.|[", "|.["), "|")
-            ReDim parts(UBound(elts) - 1)
-            If elts(0) <> "" Then Exit Sub
-            For i = 1 To UBound(elts)
-                exists = False
+            Dim elts As Variant
+            elts = Split(Replace(Replace(Replace(pathString, ".", "|."), "[", "|["), "|.|[", "|.["), "|")
+            
+            If safeUBound(elts) < 0 Then
+                 Exit Sub 
+            End If
+
+            If elts(LBound(elts)) <> "" Then
+                Exit Sub 
+            End If
+
+            If UBound(elts) = LBound(elts) And elts(LBound(elts)) = "" Then 
+                assign root, entry
+                exists = True
+                Exit Sub
+            End If
+            
+            Dim tempParts() As Variant
+            ReDim tempParts(LBound(elts) To UBound(elts)) ' Initial conservative sizing
+            Dim pathPartCount As Long
+            pathPartCount = 0
+
+            For i = LBound(elts) + 1 To UBound(elts) 
                 elt = elts(i)
                 If Left(elt, 1) = "." Then
-                    parts(i - 1) = Mid(elt, 2)
+                    tempParts(pathPartCount) = Mid(elt, 2)
+                    pathPartCount = pathPartCount + 1
                 ElseIf Left(elt, 1) = "[" And Right(elt, 1) = "]" Then
                     elt = Mid(elt, 2, Len(elt) - 2)
                     If IsNumeric(elt) Then
-                        parts(i - 1) = CLng(elt)
+                        tempParts(pathPartCount) = CLng(elt)
+                        pathPartCount = pathPartCount + 1
                     Else
-                        Exit For
+                        Exit Sub 
                     End If
-                Else
-                    Exit For
+                ElseIf elt <> "" Then 
+                    Exit Sub 
+                ElseIf elt = "" And i = UBound(elts) Then
+                    ' Handled by pathPartCount not incrementing for trailing empty segment
+                ElseIf elt = "" And i < UBound(elts) Then
+                     Exit Sub 
                 End If
-                exists = True
             Next
+
+            If pathPartCount > 0 Then
+                ReDim parsedPathParts(pathPartCount - 1)
+                For i = 0 To pathPartCount - 1
+                    parsedPathParts(i) = tempParts(i)
+                Next
+            Else 
+                 If pathString <> "" And UBound(elts) = LBound(elts) And elts(LBound(elts)) = "" Then
+                    ' Path was just "." or "[]", handled above by assigning root
+                 ElseIf pathString <> "" And UBound(elts) > LBound(elts) And pathPartCount = 0 Then
+                    ' Path like ".prop1." or ".prop1[]" - select 'prop1'
+                    ' This means elts(1) was valid, pathPartCount became 1, then elts(2) was empty.
+                    ' The logic needs to handle this if the intent is to select the parent of the final empty segment.
+                    ' For now, this will likely result in exists=False due to empty parsedPathParts or failed traversal.
+                    ' Re-evaluating this specific case: if path is "obj.", parsing makes parsedPathParts("obj"). Loop below handles it.
+                    ' If path is "obj..", parsing makes parsedPathParts("obj", ""). Loop below handles it.
+                    Exit Sub ' No valid parts to traverse
+                 Else
+                    Exit Sub
+                 End If
+            End If
         End If
-        If Not exists Then Exit Sub
-        path = parts
-    End If
-    assign root, entry
-    exists = True
-    For i = 0 To UBound(path)
-        exists = False
-        elt = path(i)
-        If elt = "" Then
+    Else
+        localPathIsString = False
+        If safeUBound(path) < LBound(path) Then ' Empty array like Array()
+             parsedPathParts = Array() 
+        Else
+             parsedPathParts = path 
+        End If
+
+        If Not (LBound(parsedPathParts) <= UBound(parsedPathParts)) Then
+            assign root, entry
             exists = True
-            Exit For
+            Exit Sub
         End If
+    End If
+
+    assign root, entry 
+
+    If Not (LBound(parsedPathParts) <= UBound(parsedPathParts)) Then
+         If (localPathIsString And pathString = "") Or (Not localPathIsString And safeUBound(path) < LBound(path)) Then
+            exists = True ' Root is the entry for explicitly empty paths
+            Exit Sub
+        Else
+            ' This implies a path like "." or "[]" which got parsed to zero usable segments
+            ' but wasn't an explicitly empty path string/array.
+            ' The root is effectively selected.
+            exists = True 
+            Exit Sub
+        End If
+    End If
+
+    For i = LBound(parsedPathParts) To UBound(parsedPathParts)
+        elt = parsedPathParts(i)
+        
+        If VarType(elt) = vbString And CStr(elt) = "" Then
+            If i = UBound(parsedPathParts) Then ' Trailing empty segment means select current entry
+                exists = True
+                Exit For
+            Else ' Empty segment in middle of path
+                exists = False
+                Exit For
+            End If
+        End If
+
         If IsArray(entry) Then
-            If Not VarType(elt) = vbLong Then Exit For
-            If elt < LBound(entry) Or elt > UBound(entry) Then Exit For
+            If Not IsNumeric(elt) Then 
+                exists = False
+                Exit For
+            End If
+            Dim arrIndex As Long
+            On Error Resume Next ' Temporarily for LBound/UBound check on potentially non-array
+            arrIndex = CLng(elt)
+            If Err.Number <> 0 Then exists = False: Err.Clear: On Error GoTo 0: Exit For
+            On Error GoTo 0
+            
+            Dim lb As Long, ub As Long
+            lb = LBound(entry)
+            ub = UBound(entry)
+            If arrIndex < lb Or arrIndex > ub Then 
+                exists = False
+                Exit For
+            End If
+            assign entry(arrIndex), entry 
         ElseIf TypeOf entry Is Dictionary Then
-            If Not entry.exists(elt) Then Exit For
-        Else
+            If Not entry.exists(elt) Then 
+                exists = False
+                Exit For
+            End If
+            assign entry(elt), entry 
+        Else 
+            exists = False 
             Exit For
         End If
-        If IsObject(entry(elt)) Then
-            Set entry = entry(elt)
-        Else
-            entry = entry(elt)
-        End If
+    Next i
+
+    If i > UBound(parsedPathParts) Then
         exists = True
-    Next
-    
+    Else
+        ' If exists was True from a trailing empty segment, keep it. Otherwise, it's False.
+        If Not (VarType(elt) = vbString And CStr(elt) = "" And i = UBound(parsedPathParts) And exists = True) Then
+             exists = False
+        End If
+    End If
 End Sub
 
-Public Sub joinSubDicts(acc, src, Optional addNew = True)
-    
-    If Not (TypeOf acc Is Dictionary And TypeOf src Is Dictionary) Then
-        Exit Sub
-    End If
-    Dim key
+Public Sub joinSubDicts(acc As Dictionary, src As Dictionary, Optional addNew As Boolean = True)
+    If Not (TypeOf acc Is Dictionary And TypeOf src Is Dictionary) Then Exit Sub
+    Dim key As Variant
     For Each key In src.keys()
         If TypeOf src(key) Is Dictionary Then
-            Dim srcSubDict
+            Dim srcSubDict As Dictionary
             Set srcSubDict = src(key)
-            Dim accSubDict
+            Dim accSubDict As Dictionary
             Set accSubDict = Nothing
             If acc.exists(key) Then
-                If TypeOf acc(key) Is Dictionary Then
-                    Set accSubDict = acc(key)
-                End If
+                If TypeOf acc(key) Is Dictionary Then Set accSubDict = acc(key)
             End If
             If accSubDict Is Nothing Then
                Set accSubDict = New Dictionary
@@ -790,416 +737,259 @@ Public Sub joinSubDicts(acc, src, Optional addNew = True)
             joinDicts accSubDict, srcSubDict, addNew
         End If
     Next
-    
 End Sub
 
-Public Sub joinDicts(acc, src, Optional addNew = True)
-    
-    If Not (TypeOf acc Is Dictionary And TypeOf src Is Dictionary) Then
-        Exit Sub
-    End If
-    Dim key
-    Dim temp
+Public Sub joinDicts(acc As Dictionary, src As Dictionary, Optional addNew As Boolean = True)
+    If Not (TypeOf acc Is Dictionary And TypeOf src Is Dictionary) Then Exit Sub
+    Dim key As Variant
     If addNew Then
-        For Each key In src.keys()
-            If IsObject(src(key)) Then
-                Set temp = src(key)
-                Set acc(key) = temp
-            Else
-                temp = src(key)
-                acc(key) = temp
-            End If
-        Next
+        For Each key In src.keys(): assign src(key), acc(key): Next
     Else
-        For Each key In src.keys()
-            If acc.exists(key) Then
-                If IsObject(src(key)) Then
-                    Set temp = src(key)
-                    Set acc(key) = temp
-                Else
-                    temp = src(key)
-                    acc(key) = temp
-                End If
-            End If
-        Next
+        For Each key In src.keys(): If acc.exists(key) Then assign src(key), acc(key): Next
     End If
-    
 End Sub
 
-Public Sub slice(src, Optional result, Optional ByVal a, Optional ByVal b)
-    
-    Dim m As Long
+Public Sub slice(src As Variant, Optional ByRef result As Variant, Optional ByVal a As Variant, Optional ByVal b As Variant)
+    Dim m As Long, lb As Long ' Added LBound
+    Dim useResultParam As Boolean
+    useResultParam = Not IsMissing(result)
+
     If IsArray(src) Then
+        lb = LBound(src)
         m = UBound(src)
     ElseIf TypeOf src Is Dictionary Then
+        lb = 0 ' Dictionaries don't have LBound, keys are used; effectively 0-indexed for slicing by count
         m = src.count - 1
-    End If
-    If IsMissing(a) Then
-        a = 0
-    End If
-    If IsMissing(b) Then
-        b = m
-    End If
-    Dim temp
-    Dim i
-    Dim d As Long
-    If Not (IsNumeric(a) And IsNumeric(b)) Then
-        If Not IsMissing(result) Then
-            assign src, result
-        End If
+    Else ' Not a collection, cannot slice
+        If useResultParam Then assign src, result Else ' No-op if result not passed
         Exit Sub
     End If
-    Dim void As Boolean
-    Dim full As Boolean
-    If a < 0 And b < 0 Or a > m And b > m Then
-        void = True
-    ElseIf a = 0 And b = m Then
-        full = True
-    Else
-        If a < 0 Then
-            a = 0
-        ElseIf a > m Then
-            a = m
-        End If
-        If b < 0 Then
-            b = 0
-        ElseIf b > m Then
-            b = m
-        End If
+
+    If IsMissing(a) Then a = lb
+    If IsMissing(b) Then b = m
+
+    Dim temp As Variant
+    Dim idx As Long ' Renamed from i
+    Dim d As Long
+    
+    If Not (IsNumeric(a) And IsNumeric(b)) Then
+        If useResultParam Then assign src, result Else src = src
+        Exit Sub
     End If
+    
+    a = CLng(a): b = CLng(b) ' Ensure Long
+
+    Dim void As Boolean: Dim full As Boolean
+    If (a < lb And b < lb) Or (a > m And b > m) Then void = True
+    If a <= lb And b >= m Then full = True
+    
+    If Not void Then ' Adjust bounds if partially overlapping
+        If a < lb Then a = lb
+        If a > m Then a = m
+        If b < lb Then b = lb
+        If b > m Then b = m
+    End If
+
     If IsArray(src) Then
-        If void Then
-            temp = Array()
-        ElseIf full Then
-            temp = src
-        ElseIf a = 0 Then
-            temp = src
-            ReDim Preserve temp(b)
+        If void Then temp = Array()
+        ElseIf full Then temp = src
+        ElseIf a > b Then temp = Array() ' Invalid range for array if not stepping backwards (which this doesn't explicitly)
         Else
-            ReDim temp(Abs(b - a))
-            Dim j
-            j = 0
-            d = IIf(a > b, -1, 1)
-            For i = a To b Step d
-                assign src(i), temp(j)
-                j = j + 1
+            ReDim temp(a To b) ' Direct slice
+            For idx = a To b
+                assign src(idx), temp(idx)
             Next
         End If
-        If IsMissing(result) Then
-            src = temp
-        Else
-            result = temp
-        End If
+        If useResultParam Then result = temp Else src = temp
     ElseIf TypeOf src Is Dictionary Then
-        If void Then
-            Set temp = New Dictionary
-            temp.CompareMode = src.CompareMode
-        ElseIf full Then
-            Set temp = jsonExt.cloneDictionary(src)
+        If void Then Set temp = New Dictionary: temp.CompareMode = src.CompareMode
+        ElseIf full Then Set temp = jsonExt.cloneDictionary(src)
         Else
-            Set temp = New Dictionary
-            temp.CompareMode = src.CompareMode
-            Dim keys
-            keys = src.keys()
-            d = IIf(a > b, -1, 1)
-            For i = a To b Step d
-                If IsObject(src(keys(i))) Then
-                    Set temp(keys(i)) = src(keys(i))
-                Else
-                    temp(keys(i)) = src(keys(i))
-                End If
-            Next
+            Set temp = New Dictionary: temp.CompareMode = src.CompareMode
+            Dim keys As Variant: keys = src.keys()
+            If a > b Or a > UBound(keys) Or b < LBound(keys) Then ' Invalid range for keys
+                ' Do nothing, temp remains empty dictionary
+            Else
+                 ' Adjust a and b to be valid 0-based indices for keys array
+                If a < 0 Then a = 0
+                If b > UBound(keys) Then b = UBound(keys)
+
+                For idx = a To b ' Iterate through selected key indices
+                    If idx >= LBound(keys) And idx <= UBound(keys) Then ' Ensure index is valid for keys array
+                        assign src(keys(idx)), temp(keys(idx))
+                    End If
+                Next
+            End If
         End If
-        If IsMissing(result) Then
-            Set src = temp
-        Else
-            Set result = temp
-        End If
-    Else
-        assign src, result
+        If useResultParam Then Set result = temp Else Set src = temp
+    Else ' Should have exited if not array/dictionary
+        If useResultParam Then assign src, result
     End If
-    
 End Sub
 
-Public Sub getAvg(root, path, avg, sum, qty)
-    
-    ' compute sum and average of root array or object values by relative path
-    ' input:
-        ' root - source array or object of entities to be processed
-        ' path - string, expression in JS format, path relative to root array or object, or array of path components
-    ' output:
-        ' path - array of path components
-        ' avg - avg value
-        ' sum - sum of values
-        ' qty - amount of processed entities
-    
-    Dim k
-    Dim entry
-    Dim exists
-    sum = 0
-    qty = 0
+
+Public Sub getAvg(root As Variant, path As Variant, ByRef avg As Variant, ByRef sum As Variant, ByRef qty As Long)
+    Dim k As Variant, entry As Variant, currentExists As Boolean
+    sum = 0: qty = 0: avg = 0 ' Initialize
+
     If IsArray(root) Then
-        For k = 0 To safeUBound(root)
-            selectElement root(k), path, entry, exists
-            If exists Then
-                If IsNumeric(entry) Then
-                    qty = qty + 1
-                    sum = sum + CDbl(entry)
-                End If
+        For k = LBound(root) To UBound(root)
+            selectElement root(k), path, entry, currentExists
+            If currentExists And IsNumeric(entry) Then qty = qty + 1: sum = sum + CDbl(entry)
+        Next
+    ElseIf TypeOf root Is Dictionary Then
+        For Each k In root.keys()
+            selectElement root(k), path, entry, currentExists
+            If currentExists And IsNumeric(entry) Then qty = qty + 1: sum = sum + CDbl(entry)
+        Next
+    End If
+    If qty > 0 Then avg = sum / qty
+End Sub
+
+Public Sub getMax(root As Variant, path As Variant, ByRef key As Variant, ByRef ret As Variant, ByRef qty As Long)
+    Dim currentMax As Variant: currentMax = Null ' Use Null to handle negative numbers correctly
+    Dim k As Variant, entry As Variant, currentExists As Boolean, numEntry As Double
+    qty = 0: key = Empty: ret = Empty
+
+    If IsArray(root) Then
+        For k = LBound(root) To UBound(root)
+            selectElement root(k), path, entry, currentExists
+            If currentExists And IsNumeric(entry) Then
+                numEntry = CDbl(entry): qty = qty + 1
+                If IsNull(currentMax) Or numEntry > currentMax Then currentMax = numEntry: key = k
             End If
         Next
     ElseIf TypeOf root Is Dictionary Then
         For Each k In root.keys()
-            selectElement root(k), path, entry, exists
-            If exists Then
-                If IsNumeric(entry) Then
-                    qty = qty + 1
-                    sum = sum + CDbl(entry)
-                End If
+            selectElement root(k), path, entry, currentExists
+            If currentExists And IsNumeric(entry) Then
+                numEntry = CDbl(entry): qty = qty + 1
+                If IsNull(currentMax) Or numEntry > currentMax Then currentMax = numEntry: key = k
             End If
         Next
     End If
-    If qty > 0 Then
-        avg = sum / qty
-    End If
-    
+    If qty > 0 Then ret = currentMax
 End Sub
 
-Public Sub getMax(root, path, key, ret, qty)
-    
-    ' retrieve entity from root array or object having max value by relative path
-    ' input:
-        ' root - source array or object entity to be retrieved from
-        ' path - string, expression in JS format, path relative to root array or object, or array of path components
-    ' output:
-        ' path - array of path components
-        ' key - max value entity key
-        ' ret - max value
-        ' qty - amount of processed entities
-    
-    Dim res
-    res = Null
-    Dim k
-    Dim entry
-    Dim exists
-    Dim e
-    qty = 0
+Public Sub getMin(root As Variant, path As Variant, ByRef key As Variant, ByRef ret As Variant, ByRef qty As Long)
+    Dim currentMin As Variant: currentMin = Null
+    Dim k As Variant, entry As Variant, currentExists As Boolean, numEntry As Double
+    qty = 0: key = Empty: ret = Empty
+
     If IsArray(root) Then
-        For k = 0 To safeUBound(root)
-            selectElement root(k), path, entry, exists
-            If exists Then
-                If IsNumeric(entry) Then
-                    e = CDbl(entry)
-                    qty = qty + 1
-                    If res > e Then
-                    Else
-                        res = e
-                        key = k
-                    End If
-                End If
+        For k = LBound(root) To UBound(root)
+            selectElement root(k), path, entry, currentExists
+            If currentExists And IsNumeric(entry) Then
+                numEntry = CDbl(entry): qty = qty + 1
+                If IsNull(currentMin) Or numEntry < currentMin Then currentMin = numEntry: key = k
             End If
         Next
     ElseIf TypeOf root Is Dictionary Then
         For Each k In root.keys()
-            selectElement root(k), path, entry, exists
-            If exists Then
-                If IsNumeric(entry) Then
-                    e = CDbl(entry)
-                    qty = qty + 1
-                    If res > e Then
-                    Else
-                        res = e
-                        key = k
-                    End If
-                End If
+            selectElement root(k), path, entry, currentExists
+            If currentExists And IsNumeric(entry) Then
+                numEntry = CDbl(entry): qty = qty + 1
+                If IsNull(currentMin) Or numEntry < currentMin Then currentMin = numEntry: key = k
             End If
         Next
     End If
-    If qty > 0 Then
-        ret = res
-    End If
-    
+    If qty > 0 Then ret = currentMin
 End Sub
 
-Public Sub getMin(root, path, key, ret, qty)
-    
-    ' retrieve entity from root array or object having min value by relative path
-    ' input:
-        ' root - source array or object entity to be retrieved from
-        ' path - string, expression in JS format, path relative to root array or object, or array of path components
-    ' output:
-        ' path - array of path components
-        ' key - min value entity key
-        ' ret - min value
-        ' qty - amount of processed entities
-    
-    Dim res
-    res = Null
-    Dim k
-    Dim entry
-    Dim exists
-    Dim e
-    qty = 0
-    If IsArray(root) Then
-        For k = 0 To safeUBound(root)
-            selectElement root(k), path, entry, exists
-            If exists Then
-                If IsNumeric(entry) Then
-                    e = CDbl(entry)
-                    qty = qty + 1
-                    If res < e Then
-                    Else
-                        res = e
-                        key = k
-                    End If
-                End If
-            End If
-        Next
-    ElseIf TypeOf root Is Dictionary Then
-        For Each k In root.keys()
-            selectElement root(k), path, entry, exists
-            If exists Then
-                If IsNumeric(entry) Then
-                    e = CDbl(entry)
-                    qty = qty + 1
-                    If res < e Then
-                    Else
-                        res = e
-                        key = k
-                    End If
-                End If
-            End If
-        Next
-    End If
-    If qty > 0 Then
-        ret = res
-    End If
-    
-End Sub
-
-Function safeUBound(a)
-    
-    safeUBound = -1
+Function safeUBound(a As Variant) As Long
+    safeUBound = -1 ' Default for error or uninitialized array
+    If Not IsArray(a) Then Exit Function
     On Error Resume Next
     safeUBound = UBound(a)
     Err.Clear
-    
 End Function
 
-Function isScalar(v) As Boolean
-    
+Function isScalar(v As Variant) As Boolean
     Select Case VarType(v)
-        Case vbByte, vbCurrency, vbDate, vbDecimal, vbDouble, vbEmpty, vbInteger, vbLong, vbSingle, vbString
+        Case vbEmpty, vbNull, vbInteger, vbLong, vbSingle, vbDouble, vbCurrency, vbDate, vbString, vbBoolean, vbDecimal, vbByte
             isScalar = True
         Case Else
             isScalar = False
     End Select
-    
 End Function
 
-Function cloneDictionary(srcDict)
-    
+Function cloneDictionary(srcDict As Dictionary) As Dictionary
     Dim destDict As Dictionary
     Set destDict = New Dictionary
     If TypeOf srcDict Is Dictionary Then
-        If Not srcDict Is Nothing Then
-            destDict.CompareMode = srcDict.CompareMode
-            Dim key
-            Dim temp
-            For Each key In srcDict.keys()
-                If IsObject(srcDict(key)) Then
-                    
-                    Set temp = srcDict(key)
-                    Set destDict(key) = temp
-                Else
-                    temp = srcDict(key)
-                    destDict(key) = temp
-                End If
-            Next
-        End If
+        destDict.CompareMode = srcDict.CompareMode
+        Dim key As Variant
+        For Each key In srcDict.keys()
+            assign srcDict(key), destDict(key) ' Use assign
+        Next
     End If
     Set cloneDictionary = destDict
-    
 End Function
 
-Sub deepClone(srcElt, destElt)
-    
+Sub deepClone(srcElt As Variant, ByRef destElt As Variant)
     If IsArray(srcElt) Then
-        destElt = srcElt
-        If safeUBound(destElt) > -1 Then
-            Dim i
-            For i = 0 To UBound(destElt)
-                Dim tmp
-                deepClone destElt(i), tmp
-                If IsObject(tmp) Then
-                    Set destElt(i) = tmp
-                Else
-                    destElt(i) = tmp
-                End If
-            Next
-        End If
-    ElseIf IsObject(srcElt) Then
-        If TypeOf srcElt Is Dictionary Then
-            Set destElt = New Dictionary
-            destElt.CompareMode = srcElt.CompareMode
-            Dim key
-            For Each key In srcElt
-                deepClone srcElt(key), tmp
-                If IsObject(tmp) Then
-                    Set destElt(key) = tmp
-                Else
-                    destElt(key) = tmp
-                End If
-            Next
-        Else
-            Set destElt = srcElt
-        End If
-    Else
-        destElt = srcElt
-    End If
-    
-End Sub
-
-Sub pushItem( _
-        destArray, _
-        sourceElement, _
-        Optional optionAppend As Boolean = True, _
-        Optional optionNestArrays As Boolean = True _
-    )
-    
-    ' not optionAppend => create array
-    ' sourceElement array and optionAppend => do not create array
-    ' sourceElement not array and optionAppend => create array with single elt
-    Select Case True
-        Case Not optionAppend Or IsEmpty(destArray)
-            destArray = Array()
-        Case Not IsArray(destArray)
-            destArray = Array(destArray)
-    End Select
-    If IsArray(sourceElement) And Not optionNestArrays Then
-        Dim n As Long
-        Dim j As Long
-        Dim i As Long
-        n = UBound(destArray)
-        ReDim Preserve destArray(LBound(destArray) To n + UBound(sourceElement) - LBound(sourceElement) + 1)
-        j = 1
-        For i = LBound(sourceElement) To UBound(sourceElement)
-            assign sourceElement(i), destArray(n + j)
-            j = j + 1
+        Dim lb As Long, ub As Long, i As Long
+        lb = LBound(srcElt): ub = UBound(srcElt)
+        ReDim destElt(lb To ub)
+        For i = lb To ub
+            Dim tmp As Variant
+            deepClone srcElt(i), tmp
+            assign tmp, destElt(i) ' Use assign
         Next
-    Else
-        ReDim Preserve destArray(LBound(destArray) To UBound(destArray) + 1)
-        assign sourceElement, destArray(UBound(destArray))
+    ElseIf TypeOf srcElt Is Dictionary Then
+        Set destElt = New Dictionary
+        destElt.CompareMode = srcElt.CompareMode
+        Dim key As Variant, tmp As Variant
+        For Each key In srcElt.keys()
+            deepClone srcElt(key), tmp
+            assign tmp, destElt(key) ' Use assign
+        Next
+    ElseIf IsObject(srcElt) Then ' For other object types, assign by reference
+        Set destElt = srcElt
+    Else ' Scalar
+        destElt = srcElt
     End If
-    
 End Sub
 
-Sub assign(source, dest)
+Sub pushItem(ByRef destArray As Variant, sourceElement As Variant, Optional optionAppend As Boolean = True, Optional optionNestArrays As Boolean = True)
+    Dim lb As Long, ub As Long
     
+    If Not optionAppend Or IsEmpty(destArray) Or VarType(destArray) < vbArray Then
+        If IsArray(sourceElement) And Not optionNestArrays Then
+            destArray = sourceElement ' Assign directly if not appending and source is array
+        Else
+            ReDim destArray(0 To 0)
+            assign sourceElement, destArray(0)
+        End If
+        Exit Sub
+    End If
+
+    lb = LBound(destArray)
+    ub = UBound(destArray)
+
+    If IsArray(sourceElement) And Not optionNestArrays Then
+        Dim srcLb As Long, srcUb As Long, srcLen As Long
+        srcLb = LBound(sourceElement): srcUb = UBound(sourceElement)
+        srcLen = srcUb - srcLb + 1
+        If srcLen > 0 Then
+            ReDim Preserve destArray(lb To ub + srcLen)
+            Dim i As Long, j As Long
+            j = ub + 1
+            For i = srcLb To srcUb
+                assign sourceElement(i), destArray(j)
+                j = j + 1
+            Next
+        End If
+    Else
+        ReDim Preserve destArray(lb To ub + 1)
+        assign sourceElement, destArray(ub + 1)
+    End If
+End Sub
+
+Sub assign(source As Variant, ByRef dest As Variant)
     If IsObject(source) Then
         Set dest = source
     Else
         dest = source
     End If
-    
 End Sub

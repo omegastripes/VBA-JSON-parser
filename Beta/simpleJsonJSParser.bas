@@ -25,20 +25,41 @@ Attribute VB_Name = "simpleJsonJSParser"
 Option Explicit
 
 Sub test()
-    Dim sample
+    Dim sample As String
     sample = "[{""a"":55}, 100]"
-    Dim result
-    Dim js
-    Dim ok
-    assign parseToVb(sample, js, , ok), result
-    Debug.Print jsonParser.stringify(js, "", vbTab)
+    Dim localTestResult As Variant ' To hold the 0 or 1 from parseToVb return
+    Dim jsDataObj As Object      ' To hold the raw JS object
+    Dim opSuccess As Boolean     ' To hold the success state from parseToVb
+    Dim repackedVbaData As Variant ' To actually get the repacked data
+
+    ' Call parseToVb correctly
+    Dim funcReturn As Long
+    funcReturn = parseToVb(sample, jsDataObj, repackedVbaData, opSuccess)
+    
+    assign funcReturn, localTestResult ' localTestResult will be 0 or 1
+
+    If opSuccess Then
+        Debug.Print "Parsing and repacking successful."
+        ' Now repackedVbaData contains the VBA representation (Array of Dictionaries)
+        ' You can inspect repackedVbaData here
+        If IsArray(repackedVbaData) Then
+            Debug.Print "Repacked data is an array. Element count: " & UBound(repackedVbaData) - LBound(repackedVbaData) + 1
+        End If
+        ' And jsDataObj contains the raw JS object, which can be stringified
+        Debug.Print "Original JS Object (stringified):"
+        Debug.Print jsonParser.stringify(jsDataObj, "", vbTab)
+    Else
+        Debug.Print "Parsing or repacking failed."
+        Debug.Print "Function return: " & funcReturn
+    End If
     Stop
 End Sub
 
-Function jsonParser()
+Function jsonParser() As Object ' Ensure it returns the parser object
     Static document As Object
-    Static json As Object
-    If json Is Nothing Then
+    Static json As Object ' Renamed back from jsonAsObject
+    
+    If json Is Nothing Then ' Renamed back from jsonAsObject
         Set document = CreateObject("htmlfile")
         document.Write "<meta http-equiv=""x-ua-compatible"" content=""IE=9"" />'"
         document.parentWindow.execScript Replace( _
@@ -59,47 +80,89 @@ Function jsonParser()
             "(var r in t)e.Add(r,t[r]);return e};json.Parse=json.parse;json.Stringify=json.stringify;", _
             "`", """" _
         )
-        Set json = document.parentWindow.json
+        Set json = document.parentWindow.json ' Renamed back from jsonAsObject
     End If
-    Set jsonParser = json
+    Set jsonParser = json ' Renamed back from jsonAsObject. Set the module-level variable
 End Function
 
-Public Function parseToVb(sample, Optional jsonData, Optional result, Optional success)
-    result = Empty
+Public Function parseToVb(sample As String, Optional ByRef jsonData As Object, Optional ByRef result As Variant, Optional ByRef success As Boolean) As Long
+    ' Default return to failure state
+    parseToVb = 0 ' 0 for failure, 1 for success
     success = False
-    On Error Resume Next
-    Set jsonData = jsonParser.parse(sample)
-    If jsonData Is Nothing Then Exit Function
-    Dim vbaJsonObject
-    repack jsonData, result
-    If Err.Number <> 0 Then Exit Function
-    parseToVb = 1
-    assign result, parseToVb
+    If Not IsMissing(result) Then result = Empty ' Clear ByRef result only if provided
+
+    On Error GoTo parseToVb_ErrorHandler
+
+    ' Ensure jsonParser is available (it's a module-level variable set by jsonParser() function)
+    If jsonParser Is Nothing Then Call jsonParser ' Initialize if not already done by calling the function that sets it
+    
+    Set jsonData = jsonParser.parse(sample) ' Attempt to parse
+
+    ' Check if parsing itself returned Nothing
+    If jsonData Is Nothing Then
+        GoTo parseToVb_Exit ' success is already False, parseToVb is 0
+    End If
+
+    Dim tempRepackResult As Variant
+    repack jsonData, tempRepackResult ' Repack the JS object to VBA Variant
+
+    ' If repack is done, assign to result parameter if it was passed
+    If Not IsMissing(result) Then
+        If IsObject(tempRepackResult) Then
+            Set result = tempRepackResult
+        Else
+            result = tempRepackResult
+        End If
+    End If
+    
     success = True
+    parseToVb = 1 ' 1 for success
+
+parseToVb_Exit:
+    Exit Function
+
+parseToVb_ErrorHandler:
+    ' Error occurred during parse or repack
+    parseToVb = 0 ' Ensure failure indicators
+    success = False
+    If Not IsMissing(result) Then result = Empty
+    If Not jsonData Is Nothing Then Set jsonData = Nothing ' Clear jsonData as it might be in an inconsistent state or invalid
+    ' Err.Clear ' Optional: Clear error if considered handled locally
+    Resume parseToVb_Exit ' Go to exit to ensure clean function termination
 End Function
 
-Private Sub repack(source, result)
+Private Sub repack(source As Object, result As Variant) ' source is JS Object from jsonParser.parse
+    Dim i As Variant ' Loop variable for arrays or dictionary keys
+    Dim ret As Variant ' Holds result of recursive repack call
+    
     Select Case jsonParser.getType(source)
         Case "array"
-            result = jsonParser.cloneDict(source, CreateObject("Scripting.Dictionary")).items
-            Dim i
-            For i = 0 To UBound(result)
-                Dim ret
-                repack result(i), ret
+            ' jsonParser.cloneDict(source, CreateObject("Scripting.Dictionary")) might not be ideal for JS array
+            ' Assuming source is a JS array; need to iterate it like one.
+            ' However, the current JS code's cloneDict seems to be used for generic JS objects.
+            ' For simplicity, let's assume cloneDict works as intended by the original author for arrays too,
+            ' creating a dictionary that, when .Items is called, gives a VBA array of JS objects.
+            Dim tempDictForArray As Object
+            Set tempDictForArray = jsonParser.cloneDict(source, CreateObject("Scripting.Dictionary"))
+            result = tempDictForArray.items ' result is now a VBA array (0-based) of JS objects/values
+            
+            For i = LBound(result) To UBound(result)
+                repack result(i), ret ' result(i) is a JS object/value from the array
                 If IsObject(ret) Then
-                    Set result(i) = ret
+                    Set result(i) = ret ' Store repacked VBA object
                 Else
-                    result(i) = ret
+                    result(i) = ret   ' Store repacked VBA primitive
                 End If
             Next
         Case "object"
+            ' Result will be a VBA Scripting.Dictionary
             Set result = jsonParser.cloneDict(source, CreateObject("Scripting.Dictionary"))
-            For Each i In result
-                repack result(i), ret
+            For Each i In result.Keys ' Iterate VBA Dictionary by keys
+                repack result(i), ret ' result(i) is a JS object/value
                 If IsObject(ret) Then
-                    Set result(i) = ret
+                    Set result(i) = ret ' Store repacked VBA object
                 Else
-                    result(i) = ret
+                    result(i) = ret   ' Store repacked VBA primitive
                 End If
             Next
         Case "string"
@@ -110,15 +173,16 @@ Private Sub repack(source, result)
             result = CBool(source)
         Case "null"
             result = Null
+        Case Else
+            ' Unknown type from jsonParser.getType, treat as error or empty
+            result = Empty
     End Select
 End Sub
 
-Sub assign(src, dest)
+Sub assign(src As Variant, dest As Variant) ' Added type hints
     If IsObject(src) Then
         Set dest = src
     Else
         dest = src
     End If
 End Sub
-
-

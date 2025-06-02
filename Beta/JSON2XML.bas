@@ -57,7 +57,7 @@ Sub convertJsonToXmlDomTest()
     strings = Array()
     If UBound(chunks) > 0 Then
         ReDim strings((UBound(chunks) - 1) \ 2) ' 1 - 0, 3 - 1, 5 - 2
-        Dim i
+        Dim i As Long ' Explicitly declare i
         For i = 1 To UBound(chunks) Step 2
             strings((i - 1) \ 2) = chunks(i)
             chunks(i) = ChrW(0)
@@ -81,6 +81,7 @@ Sub convertJsonToXmlDomTest()
         "\t", vbTab)
     strings = Split(content, "\u")
     ' replace unicode chars
+    Dim i As Long ' Declare i again for this loop if not already in scope or reuse
     For i = 1 To UBound(strings)
         Dim u
         u = ChrW(("&H" & Left(strings(i), 4)) * 1)
@@ -101,35 +102,6 @@ Sub convertJsonToXmlDomTest()
         content = .Replace(content, ",")
     End With
     ' convert json to xml outline
-'        With CreateObject("VBScript.RegExp")
-'            .Global = True
-'            .MultiLine = True
-'            .IgnoreCase = True
-'            .pattern = "\[,"
-'            content = .Replace(content, "[")
-'            .pattern = "\{,"
-'            content = .Replace(content, "{")
-'            .pattern = ",\]"
-'            content = .Replace(content, "]")
-'            .pattern = ",\}"
-'            content = .Replace(content, "}")
-'            .pattern = ":\u0000"
-'            content = .Replace(content, """ type=""string"">" & ChrW(0))
-'            .pattern = ":"
-'            content = .Replace(content, """>")
-'            .pattern = "\{\u0000"""
-'            content = .Replace(content, "<object><property name=""" & ChrW(0) & """")
-'            .pattern = ",\u0000"""
-'            content = .Replace(content, "</property><property name=""" & ChrW(0) & """")
-'            .pattern = "\}"
-'            content = .Replace(content, "</property></object>")
-'            .pattern = "\["
-'            content = .Replace(content, "<array><element>")
-'            .pattern = ","
-'            content = .Replace(content, "</element><element>")
-'            .pattern = "\]"
-'            content = .Replace(content, "</element></array>")
-'        End With
     content = Replace(content, "[,", "[")
     content = Replace(content, "{,", "{")
     content = Replace(content, ",]", "]")
@@ -144,7 +116,7 @@ Sub convertJsonToXmlDomTest()
     content = Replace(content, "]", "</element></array>")
     ' insert strings back to xml structure
     chunks = Split(content, ChrW(0))
-    For i = 1 To UBound(chunks)
+    For i = 1 To UBound(chunks) ' Reuse i
         chunks(i) = strings(i - 1) & chunks(i)
     Next
     content = Join(chunks, "")
@@ -169,7 +141,7 @@ Function beautifyXML(xml As MSXML2.DOMDocument60) As MSXML2.DOMDocument60
     
     Dim writer As New MSXML2.MXXMLWriter60
     Dim reader As New MSXML2.SAXXMLReader60
-    Dim content As String
+    Dim strContent As String ' Renamed from content to avoid conflict
     
     writer.Indent = True
     writer.omitXMLDeclaration = True
@@ -181,25 +153,37 @@ Function beautifyXML(xml As MSXML2.DOMDocument60) As MSXML2.DOMDocument60
         .putProperty "http://xml.org/sax/properties/declaration-handler", writer
         .Parse xml
     End With
-    'beautifyXML = "<?xml version=""1.0"" encoding=""utf-8"" ?>" & vbCrLf & writer.Output
-    content = writer.output
-    content = IIf(Left(content, 6) <> "<?xml ", "<?xml version=""1.0"" encoding=""utf-8"" ?>" & vbCrLf, "") & content
-    loadXmlFromString content, beautifyXML, True
+    strContent = writer.output ' Use strContent
+    strContent = IIf(Left(strContent, 6) <> "<?xml ", "<?xml version=""1.0"" encoding=""utf-8"" ?>" & vbCrLf, "") & strContent
+    
+    ' Load the beautified string into a new DOM to return a DOM object
+    Dim outDom As MSXML2.DOMDocument60 ' Declare outDom
+    Dim loadSuccess As Boolean         ' Declare loadSuccess
+    loadXmlFromString strContent, outDom, loadSuccess ' Pass outDom and loadSuccess
+    
+    If Not loadSuccess Then
+        MsgBox "Error in beautifyXML loading string: " & outDom.parseError.reason
+        Set beautifyXML = xml ' Return original DOM on error
+    Else
+        Set beautifyXML = outDom
+    End If
     
 End Function
 
-Sub loadXmlFromString(content As String, xml As MSXML2.DOMDocument60, success As Boolean)
+Sub loadXmlFromString(ByVal xmlString As String, ByRef xmlDocument As MSXML2.DOMDocument60, ByRef success As Boolean)
     
-    Set xml = New MSXML2.DOMDocument60
-    With xml
+    Set xmlDocument = New MSXML2.DOMDocument60
+    With xmlDocument
         .validateOnParse = False
         .resolveExternals = False
-        '.preserveWhiteSpace = True
+        .async = False ' Ensure synchronous loading
         .setProperty "ProhibitDTD", False
         .setProperty "SelectionLanguage", "XPath"
-        .LoadXML content
-        '.InsertBefore .createProcessingInstruction("xml", "version=""1.0"" encoding=""utf-8"""), .FirstChild
-        success = isParseXMLSuccess(xml)
+        .LoadXML xmlString
+        success = (.parseError.ErrorCode = 0)
+        If Not success Then
+             Debug.Print "loadXmlFromString Error: " & .parseError.reason & " on XML: " & xmlString
+        End If
     End With
     
 End Sub
@@ -263,5 +247,3 @@ Sub smartCreateFolder(folder)
     End With
     
 End Sub
-
-

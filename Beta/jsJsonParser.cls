@@ -63,62 +63,105 @@ Public Property Get jsGetType() ' As JScriptTypeInfo
     
 End Property
 
-Public Function parseToJs(sample, Optional success)
+Public Function parseToJs(sample As String, Optional ByRef success As Variant) As Object
     
-    On Error Resume Next
+    On Error GoTo parseToJs_ErrorHandler
+    
     Set parseToJs = jsonParser.parse(sample) ': Dim parse ' keep lower case
-    success = Err.Number = 0
-    If Not success Then
-        Set parseToJs = Nothing
+    If IsMissing(success) Then
+        ' If success param not provided, we don't update it
+    Else
+        success = True
     End If
-    
+
+Exit Function
+parseToJs_ErrorHandler:
+    If IsMissing(success) Then
+        ' If success param not provided, we don't update it
+    Else
+        success = False
+    End If
+    Set parseToJs = Nothing
+    ' Consider: Err.Raise Err.Number, "jsJsonParser.parseToJs", Err.Description
 End Function
 
-Public Function parseToVb(Optional sample, Optional jsJsonData, Optional result, Optional success)
-    
-    If Not IsMissing(sample) Then
-        Set jsJsonData = parseToJs(sample)
-    End If
-    On Error Resume Next
-    If jsJsonData Is Nothing Then
-        success = False
+Public Function parseToVb(Optional sample As String, Optional jsJsonData As Object, Optional ByRef result As Variant, Optional ByRef success As Variant) As Variant
+    Dim parseJsSuccess As Variant ' To capture success from parseToJs
+    Dim vbaJsonObject As Variant
+
+    If IsMissing(success) Then
+        ' If success param not provided, we don't update it for internal errors
     Else
-        Dim vbaJsonObject
-        repack jsJsonData, vbaJsonObject
-        success = Err.Number = 0
-        If success Then
-            If IsObject(vbaJsonObject) Then
-                Set parseToVb = vbaJsonObject
-                Set result = vbaJsonObject
-            Else
-                parseToVb = vbaJsonObject
-                result = vbaJsonObject
-            End If
-        Else
+        success = True ' Assume success initially
+    End If
+
+    On Error GoTo parseToVb_ErrorHandler
+
+    If Not IsMissing(sample) Then
+        Set jsJsonData = parseToJs(sample, parseJsSuccess)
+        If Not IsMissing(success) And parseJsSuccess = False Then ' Check if parseToJs failed
+            success = False
             parseToVb = Empty
-            result = Empty
-            Set jsJsonData = Nothing
+            If Not IsMissing(result) Then result = Empty
+            Exit Function
         End If
     End If
     
+    If jsJsonData Is Nothing Then
+        If Not IsMissing(success) Then success = False
+        parseToVb = Empty
+        If Not IsMissing(result) Then result = Empty
+        Exit Function
+    End If
+    
+    repack jsJsonData, vbaJsonObject ' This can error
+    
+    ' If repack succeeded and no error occurred before this
+    If IsObject(vbaJsonObject) Then
+        Set parseToVb = vbaJsonObject
+        If Not IsMissing(result) Then Set result = vbaJsonObject
+    Else
+        parseToVb = vbaJsonObject
+        If Not IsMissing(result) Then result = vbaJsonObject
+    End If
+    ' success remains true if already set and no error occurred
+
+Exit Function
+parseToVb_ErrorHandler:
+    If Not IsMissing(success) Then
+        success = False
+    End If
+    parseToVb = Empty
+    If Not IsMissing(result) Then
+        On Error Resume Next ' Avoid error if result can't be set to Empty (e.g. if it was ByVal Object)
+        result = Empty
+        On Error GoTo 0
+    End If
+    Set jsJsonData = Nothing ' Clear potentially problematic data
+    ' Consider: Err.Raise Err.Number, "jsJsonParser.parseToVb", Err.Description
 End Function
 
-Public Function stringify(jsJsonData, spacer) ' jsJsonData As JScriptTypeInfo
+Public Function stringify(jsJsonData As Object, spacer As String) As String
     
-    On Error Resume Next
+    On Error GoTo stringify_ErrorHandler
+    
     stringify = jsonParser.stringify(jsJsonData, "", spacer) ': Dim stringify ' keep lower case
-    
+
+Exit Function
+stringify_ErrorHandler:
+    stringify = "" ' Return empty string on error
+    ' Consider: Err.Raise Err.Number, "jsJsonParser.stringify", Err.Description
 End Function
 
-Private Sub repack(source, result)
+Private Sub repack(source As Object, result As Variant) ' source is JScript object
     
     Select Case getType(source)
         Case "array"
-            result = copyDict(source, New Dictionary).items
-            Dim i
-            For i = 0 To UBound(result)
-                Dim ret
-                repack result(i), ret
+            result = copyDict(source, New Dictionary).items ' This creates a VBA array
+            Dim i As Long
+            Dim ret As Variant
+            For i = LBound(result) To UBound(result)
+                repack result(i), ret ' result(i) is an element from JScript array, could be object or primitive
                 If IsObject(ret) Then
                     Set result(i) = ret
                 Else
@@ -126,13 +169,14 @@ Private Sub repack(source, result)
                 End If
             Next
         Case "object"
-            Set result = copyDict(source, New Dictionary)
-            For Each i In result
-                repack result(i), ret
+            Set result = copyDict(source, New Dictionary) ' This creates a VBA Dictionary
+            Dim key As Variant
+            For Each key In result.Keys ' Iterate VBA Dictionary
+                repack result(key), ret ' result(key) is JScript object or primitive
                 If IsObject(ret) Then
-                    Set result(i) = ret
+                    Set result(key) = ret
                 Else
-                    result(i) = ret
+                    result(key) = ret
                 End If
             Next
         Case "string"
@@ -143,11 +187,13 @@ Private Sub repack(source, result)
             result = CBool(source)
         Case "null"
             result = Null
+        Case Else ' Added for robustness, though getType should only return known types
+            result = Empty ' Or handle as error
     End Select
     
 End Sub
 
-Private Function jsCode()
+Private Function jsCode() As String
     
     ' credits
     ' github repo

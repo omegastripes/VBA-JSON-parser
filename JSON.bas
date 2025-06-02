@@ -34,14 +34,16 @@ Private sTabChar As String
 Private sLfChar As String
 Private sSpcChar As String
     
-Sub Parse(ByVal sSample As String, vJSON As Variant, sState As String)
+Sub Parse(ByVal sSample As String, vJSON As Variant, sState As String, Optional ByRef sErrorDetail As String)
     
     ' Input:
     ' sSample - source JSON string
     ' Output:
     ' vJson - created object or array to be returned as result
     ' sState - string Object|Array|Error depending on result
+    ' sErrorDetail - optional string to receive detailed error message
     
+    sErrorDetail = "" ' Initialize sErrorDetail
     sBuffer = sSample
     Set oTokens = New Dictionary
     Set oRegEx = CreateObject("VBScript.RegExp")
@@ -70,13 +72,20 @@ Sub Parse(ByVal sSample As String, vJSON As Variant, sState As String)
             Tokenize "a"
         Loop While bMatch
         .Pattern = "^<\d+[oa]>$" ' Top level object structure, unspecified array accepted
-        If .Test(sBuffer) And oTokens.Exists(sBuffer) Then
-            sDelim = Left(Right(1 / 2, 2), 1)
-            Retrieve sBuffer, vJSON
-            sState = IIf(IsObject(vJSON), "Object", "Array")
+        If .Test(sBuffer) Then
+            If oTokens.Exists(sBuffer) Then
+                sDelim = Left(Right(1 / 2, 2), 1)
+                Retrieve sBuffer, vJSON
+                sState = IIf(IsObject(vJSON), "Object", "Array")
+            Else
+                vJSON = Null
+                sState = "Error"
+                sErrorDetail = "JSON Parse Error: Token not found for buffer content snapshot '" & Left(sBuffer, 100) & "...'."
+            End If
         Else
             vJSON = Null
             sState = "Error"
+            sErrorDetail = "JSON Parse Error: Invalid JSON structure. Final buffer content snapshot: '" & Left(sBuffer, 100) & "...'."
         End If
     End With
     Set oTokens = Nothing
@@ -154,22 +163,22 @@ Private Sub Retrieve(sTokenKey, vTransfer)
             Case "n"
                 vTransfer = sTokenValue
             Case "s"
-                vTransfer = Replace(Replace(Replace(Replace(Replace(Replace(Replace(Replace( _
-                    Mid(sTokenValue, 2, Len(sTokenValue) - 2), _
-                    "\""", """"), _
-                    "\\", "\" & vbNullChar), _
-                    "\/", "/"), _
-                    "\b", Chr(8)), _
-                    "\f", Chr(12)), _
-                    "\n", vbLf), _
-                    "\r", vbCr), _
-                    "\t", vbTab)
+                vTransfer = Mid(sTokenValue, 2, Len(sTokenValue) - 2)
+                vTransfer = Replace(vTransfer, Chr(92) & Chr(34), Chr(34))                 ' \"
+                vTransfer = Replace(vTransfer, Chr(92) & Chr(92), Chr(92) & vbNullChar)   ' \\
+                vTransfer = Replace(vTransfer, Chr(92) & "/", "/")                       ' \/
+                vTransfer = Replace(vTransfer, Chr(92) & "b", Chr(8))                    ' \b
+                vTransfer = Replace(vTransfer, Chr(92) & "f", Chr(12))                   ' \f
+                vTransfer = Replace(vTransfer, Chr(92) & "n", vbLf)                      ' \n
+                vTransfer = Replace(vTransfer, Chr(92) & "r", vbCr)                      ' \r
+                vTransfer = Replace(vTransfer, Chr(92) & "t", vbTab)                     ' \t
+                
                 .Global = False
-                .Pattern = "\\u[0-9a-fA-F]{4}"
+                .Pattern = "\\" & "u[0-9a-fA-F]{4}" ' \uXXXX
                 Do While .Test(vTransfer)
                     vTransfer = .Replace(vTransfer, ChrW(("&H" & Right(.Execute(vTransfer)(0).Value, 4)) * 1))
                 Loop
-                vTransfer = Replace(vTransfer, "\" & vbNullChar, "\")
+                vTransfer = Replace(vTransfer, Chr(92) & vbNullChar, Chr(92)) ' Restore escaped backslashes
             Case "d"
                 vTransfer = CDbl(Replace(sTokenValue, ".", sDelim))
             Case "c"
