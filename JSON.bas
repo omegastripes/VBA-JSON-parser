@@ -33,6 +33,10 @@ Private sDelim As String
 Private sTabChar As String
 Private sLfChar As String
 Private sSpcChar As String
+
+Private sDumpPath As String
+Private lDumpStep As Long
+Private m_sDumpStaticID As String
     
 Sub Parse(ByVal sSample As String, vJSON As Variant, sState As String)
     
@@ -42,6 +46,13 @@ Sub Parse(ByVal sSample As String, vJSON As Variant, sState As String)
     ' vJson - created object or array to be returned as result
     ' sState - string Object|Array|Error depending on result
     
+    Dim sTimestamp As String
+    On Error Resume Next
+    sTimestamp = CStr(DateDiff("s", "1/1/1970", Now()))
+    On Error GoTo 0
+    sDumpPath = ThisWorkbook.path & "\JSONDump\" & sTimestamp
+    lDumpStep = 0
+    
     sBuffer = sSample
     Set oTokens = New Dictionary
     Set oRegEx = CreateObject("VBScript.RegExp")
@@ -50,26 +61,37 @@ Sub Parse(ByVal sSample As String, vJSON As Variant, sState As String)
         .MultiLine = True
         .IgnoreCase = True ' Unspecified True, False, Null accepted
         .Pattern = "(?:'[^']*'|""(?:\\""|[^""])*"")(?=\s*[,\:\]\}])" ' Double-quoted string, unspecified quoted string
+        m_sDumpStaticID = "01"
         Tokenize "s"
         .Pattern = "[+-]?(?:\d+\.\d*|\.\d+|\d+)(?:e[+-]?\d+)?(?=\s*[,\]\}])" ' Number, E notation number
+        m_sDumpStaticID = "02"
         Tokenize "d"
         .Pattern = "\b(?:true|false|null)(?=\s*[,\]\}])" ' Constants true, false, null
+        m_sDumpStaticID = "03"
         Tokenize "c"
         .Pattern = "\b[A-Za-z_]\w*(?=\s*\:)" ' Unspecified non-double-quoted property name accepted
+        m_sDumpStaticID = "04"
         Tokenize "n"
         .Pattern = "\s+"
+        m_sDumpStaticID = "05"
+        dumpRegExpState .Pattern, sBuffer
         sBuffer = .Replace(sBuffer, "") ' Remove unnecessary spaces
         .MultiLine = False
         Do
             bMatch = False
             .Pattern = "<\d+(?:[sn])>\:<\d+[codas]>" ' Object property structure
+            m_sDumpStaticID = "06"
             Tokenize "p"
             .Pattern = "\{(?:<\d+p>(?:,<\d+p>)*)?,?\}" ' Object structure
+            m_sDumpStaticID = "07"
             Tokenize "o"
             .Pattern = "\[(?:<\d+[codas]>(?:,<\d+[codas]>)*)?,?\]" ' Array structure
+            m_sDumpStaticID = "08"
             Tokenize "a"
         Loop While bMatch
         .Pattern = "^<\d+[oa]>$" ' Top level object structure, unspecified array accepted
+        m_sDumpStaticID = "09"
+        dumpRegExpState .Pattern, sBuffer
         If .Test(sBuffer) And oTokens.Exists(sBuffer) Then
             sDelim = Left(Right(1 / 2, 2), 1)
             Retrieve sBuffer, vJSON
@@ -91,6 +113,7 @@ Private Sub Tokenize(sType)
     Dim i As Long
     Dim sKey As String
     
+    dumpRegExpState oRegEx.Pattern, sBuffer
     With oRegEx.Execute(sBuffer)
         If .Count = 0 Then Exit Sub
         ReDim aContent(0 To .Count - 1)
@@ -166,7 +189,12 @@ Private Sub Retrieve(sTokenKey, vTransfer)
                     "\t", vbTab)
                 .Global = False
                 .Pattern = "\\u[0-9a-fA-F]{4}"
-                Do While .Test(vTransfer)
+                Do
+                    m_sDumpStaticID = "10"
+                    dumpRegExpState .Pattern, vTransfer
+                    If Not .Test(vTransfer) Then Exit Do
+                    m_sDumpStaticID = "11"
+                    dumpRegExpState .Pattern, vTransfer
                     vTransfer = .Replace(vTransfer, ChrW(("&H" & Right(.Execute(vTransfer)(0).Value, 4)) * 1))
                 Loop
                 vTransfer = Replace(vTransfer, "\" & vbNullChar, "\")
@@ -526,5 +554,51 @@ Private Sub UnflattenElement(vParent, lNextLevel, aQualifiers, vValue, bSuccess)
         vParent(vNextQualifier) = vChild
     End If
     bSuccess = True
+    
+End Sub
+
+Private Sub dumpRegExpState(sPattern, sInput)
+    
+    lDumpStep = lDumpStep + 1
+    
+    Dim sContent As String
+    sContent = sPattern & vbCrLf & vbCrLf & vbCrLf & sInput
+    
+    Dim sTimestamp As String
+    On Error Resume Next
+    sTimestamp = CStr(DateDiff("s", 25569, Now()))
+    On Error GoTo 0
+    
+    Dim sFileName As String
+    sFileName = Right("00000" & lDumpStep, 5) & "_" & m_sDumpStaticID & "_" & sTimestamp & "_dump.txt"
+    
+    saveTextToFile sContent, sDumpPath & "\" & sFileName, "utf-8"
+    
+End Sub
+
+Private Sub saveTextToFile(content, filePath, charset)
+    
+    smartCreateFolder CreateObject("Scripting.FileSystemObject").GetParentFolderName(filePath)
+    With CreateObject("ADODB.Stream")
+        .Type = 2 ' adTypeText
+        .Open
+        .charset = charset
+        .WriteText content
+        .Position = 0
+        .Type = 1 ' TypeBinary
+        .SaveToFile filePath, 2
+        .Close
+    End With
+    
+End Sub
+
+Private Sub smartCreateFolder(folder)
+    
+    With CreateObject("Scripting.FileSystemObject")
+        If Not .FolderExists(folder) Then
+            smartCreateFolder .GetParentFolderName(folder)
+            .CreateFolder folder
+        End If
+    End With
     
 End Sub
