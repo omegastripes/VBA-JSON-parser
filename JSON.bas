@@ -60,7 +60,7 @@ Sub Parse(ByVal sSample As String, vJSON As Variant, sState As String)
         .Global = True
         .MultiLine = True
         .IgnoreCase = True ' Unspecified True, False, Null accepted
-        .Pattern = "(?:'[^']*'|""(?:\\""|[^""])*"")(?=\s*[,\:\]\}])" ' Double-quoted string, unspecified quoted string
+        .Pattern = "(?:'[^']*'|""(?:\\""|[^""])*"")" ' Double-quoted string, unspecified quoted string
         m_sDumpStaticID = "01"
         Tokenize "s"
         .Pattern = "[+-]?(?:\d+\.\d*|\.\d+|\d+)(?:e[+-]?\d+)?(?=\s*[,\]\}])" ' Number, E notation number
