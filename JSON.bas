@@ -63,19 +63,19 @@ Sub Parse(ByVal sSample As String, vJSON As Variant, sState As String)
         .Pattern = "(?:'[^']*'|""(?:\\""|[^""])*"")" ' Double-quoted string, unspecified quoted string
         m_sDumpStaticID = "01"
         Tokenize "s"
-        .Pattern = "[+-]?(?:\d+\.\d*|\.\d+|\d+)(?:e[+-]?\d+)?(?=\s*[,\]\}])" ' Number, E notation number
-        m_sDumpStaticID = "02"
-        Tokenize "d"
-        .Pattern = "\b(?:true|false|null)(?=\s*[,\]\}])" ' Constants true, false, null
-        m_sDumpStaticID = "03"
-        Tokenize "c"
-        .Pattern = "\b[A-Za-z_]\w*(?=\s*\:)" ' Unspecified non-double-quoted property name accepted
-        m_sDumpStaticID = "04"
-        Tokenize "n"
         .Pattern = "\s+"
-        m_sDumpStaticID = "05"
+        m_sDumpStaticID = "02"
         dumpRegExpState .Pattern, sBuffer
         sBuffer = .Replace(sBuffer, "") ' Remove unnecessary spaces
+        .Pattern = "[+-]?(?:\d+\.\d*|\.\d+|\d+)(?:e[+-]?\d+)?(?=[,\]\}])" ' Number, E notation number
+        m_sDumpStaticID = "03"
+        Tokenize "d"
+        .Pattern = "\b(?:true|false|null)(?=[,\]\}])" ' Constants true, false, null
+        m_sDumpStaticID = "04"
+        Tokenize "c"
+        .Pattern = "\b[A-Za-z_]\w*(?=\:)" ' Unspecified non-double-quoted property name accepted
+        m_sDumpStaticID = "05"
+        Tokenize "n"
         .MultiLine = False
         Do
             bMatch = False
@@ -570,7 +570,7 @@ Private Sub dumpRegExpState(sPattern, sInput)
     On Error GoTo 0
     
     Dim sFileName As String
-    sFileName = Right("00000" & lDumpStep, 5) & "_" & m_sDumpStaticID & "_" & sTimestamp & "_dump.txt"
+    sFileName = Right("00000" & lDumpStep, 5) & "_" & m_sDumpStaticID & "_" & sTimestamp & "_dump_r1.txt"
     
     saveTextToFile sContent, sDumpPath & "\" & sFileName, "utf-8"
     
