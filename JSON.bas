@@ -33,7 +33,7 @@ Private sDelim As String
 Private sTabChar As String
 Private sLfChar As String
 Private sSpcChar As String
-    
+
 Sub Parse(ByVal sSample As String, vJSON As Variant, sState As String)
     
     ' Input:
@@ -49,16 +49,16 @@ Sub Parse(ByVal sSample As String, vJSON As Variant, sState As String)
         .Global = True
         .MultiLine = True
         .IgnoreCase = True ' Unspecified True, False, Null accepted
-        .Pattern = "(?:'[^']*'|""(?:\\""|[^""])*"")(?=\s*[,\:\]\}])" ' Double-quoted string, unspecified quoted string
+        .Pattern = "(?:'[^']*'|""(?:\\""|[^""])*"")" ' Double-quoted string, unspecified quoted string
         Tokenize "s"
-        .Pattern = "[+-]?(?:\d+\.\d*|\.\d+|\d+)(?:e[+-]?\d+)?(?=\s*[,\]\}])" ' Number, E notation number
-        Tokenize "d"
-        .Pattern = "\b(?:true|false|null)(?=\s*[,\]\}])" ' Constants true, false, null
-        Tokenize "c"
-        .Pattern = "\b[A-Za-z_]\w*(?=\s*\:)" ' Unspecified non-double-quoted property name accepted
-        Tokenize "n"
         .Pattern = "\s+"
         sBuffer = .Replace(sBuffer, "") ' Remove unnecessary spaces
+        .Pattern = "[+-]?(?:\d+\.\d*|\.\d+|\d+)(?:e[+-]?\d+)?\b" ' Number, E notation number
+        Tokenize "d"
+        .Pattern = "\b(?:true|false|null)\b" ' Constants true, false, null
+        Tokenize "c"
+        .Pattern = "\b[A-Za-z_]\w*\b" ' Unspecified non-double-quoted property name accepted
+        Tokenize "n"
         .MultiLine = False
         Do
             bMatch = False
@@ -406,7 +406,7 @@ Sub Flatten(vJSON As Variant, vResult As Variant)
     ' Input:
     ' vJSON - Array or Object which contains JSON data
     ' Output:
-    ' oResult - Flatten JSON data object
+    ' vResult - Flatten JSON data object
     
     Set oChunks = New Dictionary
     FlattenElement vJSON, ""
